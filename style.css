@@ -1,0 +1,93 @@
+body { margin: 0; overflow: hidden; background-color: #ffffff; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+
+/* Sidebar & Professional Scrollbar Styling */
+#sidebar-container {
+    position: absolute; left: 0; top: 0; bottom: 0; z-index: 10;
+    display: flex; transition: transform 0.3s ease-in-out;
+}
+#sidebar-container.collapsed {
+    transform: translateX(-340px);
+}
+#sidebar {
+    width: 340px; height: 100%;
+    background: rgba(24, 24, 27, 0.95);
+    color: #e4e4e7; padding: 25px 20px; box-sizing: border-box; overflow-y: auto;
+    box-shadow: 4px 0 15px rgba(0,0,0,0.4); backdrop-filter: blur(5px);
+}
+/* Styling Scrollbar */
+#sidebar::-webkit-scrollbar { width: 6px; }
+#sidebar::-webkit-scrollbar-track { background: transparent; }
+#sidebar::-webkit-scrollbar-thumb { background: #52525b; border-radius: 10px; }
+#sidebar::-webkit-scrollbar-thumb:hover { background: #71717a; }
+
+/* Tombol Toggle Sidebar */
+#toggle-btn {
+    background: rgba(24, 24, 27, 0.95); color: #fff;
+    border: none; cursor: pointer; height: 40px; width: 30px;
+    margin-top: 20px; border-radius: 0 6px 6px 0;
+    box-shadow: 3px 0 5px rgba(0,0,0,0.2);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; transition: 0.2s;
+}
+#toggle-btn:hover { background: #3f3f46; }
+
+/* Title Styling */
+.app-title {
+    margin-top: 0; font-size: 19px; font-weight: 600; line-height: 1.3;
+    color: #f8fafc; padding-bottom: 15px;
+    border-bottom: 3px solid #3b82f6; 
+    text-transform: capitalize; letter-spacing: 0.5px;
+}
+
+/* Legend & Controls */
+.control-group { margin-top: 25px; }
+.control-group h4 { margin: 0 0 12px 0; font-size: 13px; color: #a1a1aa; text-transform: uppercase; letter-spacing: 1px; }
+.legend-item { display: flex; align-items: center; margin-bottom: 12px; background: rgba(255,255,255,0.03); padding: 6px; border-radius: 6px; }
+
+/* Checkbox Styling */
+.legend-item input[type="checkbox"] {
+    margin: 0 10px 0 5px; width: 16px; height: 16px; cursor: pointer;
+    accent-color: #3b82f6;
+}
+
+.legend-item label { flex: 1; font-size: 13px; cursor: pointer; user-select: none; }
+.legend-item input[type="color"] { 
+    width: 26px; height: 26px; border: none; padding: 0; 
+    background: transparent; cursor: pointer; margin-right: 10px; border-radius: 4px;
+}
+.btn-default { 
+    background-color: #3f3f46; color: white; border: none; 
+    padding: 5px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; transition: 0.2s; font-weight: 500;
+}
+.btn-default:hover { background-color: #52525b; }
+
+/* Metadata Section */
+.metadata {
+    margin-top: 35px; border-top: 1px dashed #52525b; padding-top: 20px;
+    font-size: 12px; line-height: 1.6; color: #a1a1aa; text-align: justify;
+}
+.metadata strong { color: #e4e4e7; font-weight: 600; }
+.metadata a { color: #60a5fa; text-decoration: none; transition: 0.2s; }
+.metadata a:hover { color: #93c5fd; }
+
+/* Loading Screen */
+#loading {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    background: rgba(24, 24, 27, 0.9); color: white; padding: 20px 40px; 
+    border-radius: 8px; font-size: 16px; z-index: 20; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    font-weight: 500; letter-spacing: 0.5px;
+}
+
+/* Compass Styling */
+#compass {
+    position: absolute; top: 25px; right: 25px; width: 45px; height: 45px;
+    background: rgba(24, 24, 27, 0.8); border: 2px solid #52525b; border-radius: 50%;
+    color: #ef4444; font-weight: bold; font-family: sans-serif; font-size: 14px;
+    display: flex; align-items: flex-start; justify-content: center; padding-top: 4px; box-sizing: border-box;
+    z-index: 10; box-shadow: 0 4px 12px rgba(0,0,0,0.5); pointer-events: none;
+    transition: transform 0.1s ease-out;
+}
+#compass::after {
+    content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 6px; height: 6px; background: #a1a1aa; border-radius: 50%;
+}
