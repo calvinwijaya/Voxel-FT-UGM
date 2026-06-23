@@ -76,7 +76,7 @@ const geometry = new THREE.BoxGeometry(VOXEL_SIZE * 0.98, VOXEL_SIZE * 0.98, VOX
 const layerMeshes = {};
 
 // --- 3. FETCH DATA & AUTO CENTER ---
-fetch('./environment_blocks2.json')
+fetch('./environment_blocks.json')
     .then(res => res.json())
     .then(blocks => {
         const categorizedBlocks = { ground: [], river: [], building: [], building_roof: [], tree_low: [], tree_high: [] };
