@@ -210,10 +210,13 @@ function updateSunPosition(hour) {
     
     const angle = ((hour - 6) / 12) * Math.PI;
     const sunRadius = 1500;
-    const sunX = Math.cos(angle) * -sunRadius; 
+    
+    // PERBAIKAN: Hapus tanda minus pada sunRadius agar jam 6 pagi (cos 0) berada di +X (Timur)
+    const sunX = Math.cos(angle) * sunRadius; 
     const sunY = Math.sin(angle) * sunRadius;
     
-    sun.position.set(sunX, Math.max(sunY, 10), 500);
+    // PERBAIKAN: Ubah Z menjadi -500 agar matahari sedikit condong ke Utara (realistis untuk area Jogja)
+    sun.position.set(sunX, Math.max(sunY, 10), -500);
     
     const intensity = Math.sin(angle); 
     sun.intensity = intensity * 0.8 + 0.2;     
