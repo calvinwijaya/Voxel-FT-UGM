@@ -296,7 +296,7 @@ function animate() {
     controls.update();
 
     const azimuthalAngle = controls.getAzimuthalAngle();
-    document.getElementById('compass').style.transform = `rotate(${-(azimuthalAngle * 180 / Math.PI)}deg)`;
+    document.getElementById('compass').style.transform = `rotate(${azimuthalAngle * 180 / Math.PI}deg)`;
 
     renderer.render(scene, camera);
 }
