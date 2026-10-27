@@ -188,3 +188,84 @@ body.walking #hud { display: block; }
     background: rgba(255,255,255,.7); padding: 1px 6px; border-radius: 3px; z-index: 5;
 }
 #attribution:empty { display: none; }
+
+/* =====================================================================
+   MOBILE / TOUCH
+   ===================================================================== */
+.touch-only { display: none; }
+body.touch .touch-only { display: block; }
+body.touch .desktop-only { display: none; }
+canvas { touch-action: none; }
+
+/* -------- bottom sheet instead of a left panel on narrow screens -------- */
+@media (max-width: 768px) {
+    #sidebar-container {
+        top: auto; right: 0; left: 0; bottom: 0; height: 62vh; height: 62dvh;
+        flex-direction: column-reverse;                       /* tab above the sheet */
+        transition: transform 0.3s ease-in-out;
+    }
+    #sidebar-container.collapsed { transform: translateY(calc(100% - 40px)); }
+    #sidebar {
+        width: 100%; flex: 1; min-height: 0; border-radius: 0;
+        padding: 14px 16px calc(20px + env(safe-area-inset-bottom));
+        box-shadow: 0 -4px 15px rgba(0,0,0,0.35);
+    }
+    #toggle-btn {
+        margin: 0 auto; width: auto; height: 40px; padding: 0 22px;
+        border-radius: 12px 12px 0 0; font-size: 13px; font-weight: 600; letter-spacing: .3px;
+        box-shadow: 0 -3px 8px rgba(0,0,0,0.25);
+    }
+    .app-title { font-size: 16px; padding-bottom: 10px; }
+    #compass { top: calc(14px + env(safe-area-inset-top)); right: 14px; }
+    #attribution { bottom: 44px; font-size: 9px; }
+    #loading { font-size: 14px; padding: 16px 26px; white-space: nowrap; }
+    .seg button { padding: 10px 6px; }                       /* bigger tap targets */
+    .legend-item { padding: 8px 6px; }
+}
+
+/* -------- walk mode on touch: full-screen view + on-screen controls -------- */
+#touch-ui { display: none; }
+body.touch.walking #touch-ui { display: block; }
+body.touch.walking #sidebar-container,
+body.touch.walking #attribution { display: none; }
+body.touch #hud-unlocked { display: none !important; }
+body.touch.walking #hud { top: calc(12px + env(safe-area-inset-top)); bottom: auto; padding: 5px 10px; font-size: 11px; }
+
+#touch-ui button {
+    position: relative; background: rgba(24,24,27,.55); color: #fff; border: 1.5px solid rgba(255,255,255,.35);
+    font-family: inherit; font-weight: 600; touch-action: none; user-select: none; -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent; backdrop-filter: blur(4px);
+}
+#touch-ui button.down { background: rgba(59,130,246,.75); border-color: #93c5fd; }
+#touch-exit {
+    position: absolute; z-index: 12; left: calc(12px + env(safe-area-inset-left)); top: calc(12px + env(safe-area-inset-top));
+    padding: 8px 14px; border-radius: 18px; font-size: 13px;
+}
+#joy {
+    position: absolute; z-index: 12; width: 130px; height: 130px; border-radius: 50%;
+    left: calc(24px + env(safe-area-inset-left)); bottom: calc(24px + env(safe-area-inset-bottom));
+    background: rgba(24,24,27,.35); border: 2px solid rgba(255,255,255,.35); touch-action: none;
+}
+#joy-knob {
+    position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; border-radius: 50%;
+    transform: translate(-50%, -50%); background: rgba(255,255,255,.75); box-shadow: 0 2px 8px rgba(0,0,0,.4);
+    pointer-events: none;
+}
+#touch-btns {
+    position: absolute; z-index: 12; right: calc(18px + env(safe-area-inset-right)); bottom: calc(24px + env(safe-area-inset-bottom));
+    display: grid; grid-template-columns: repeat(2, auto); gap: 10px; justify-items: center; align-items: end;
+}
+#touch-btns .small { width: 64px; height: 40px; border-radius: 12px; font-size: 12px; }
+#touch-btns .small.fire { background: rgba(194,65,12,.7); }
+#touch-btns .big { width: 82px; height: 82px; border-radius: 50%; font-size: 14px; grid-column: 2; }
+#touch-btns .fly-only { display: none; width: 64px; height: 64px; border-radius: 50%; font-size: 12px; grid-column: 1; grid-row: 3; align-self: center; }
+body.flying #touch-btns .fly-only { display: block; }
+body.flying #touch-btns .big::after { content: ' / Up'; }
+
+/* -------- landscape phones: keep the side panel, but narrower -------- */
+@media (max-height: 500px) and (orientation: landscape) {
+    #sidebar { width: 300px; padding: 14px 14px; }
+    #sidebar-container.collapsed { transform: translateX(-300px); }
+    .app-title { font-size: 15px; }
+    #compass { top: 12px; right: 12px; width: 44px; height: 44px; }
+}

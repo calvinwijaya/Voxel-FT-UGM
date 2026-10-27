@@ -8,6 +8,10 @@ const APP = window.APP = {
     updaters: []            // functions(dt) called every frame
 };
 const VS = CONFIG.VOXEL_SIZE;
+APP.isTouch = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0 && matchMedia('(max-width: 900px)').matches;
+APP.isSmall = () => matchMedia('(max-width: 768px)').matches;
+if (APP.isTouch) document.body.classList.add('touch');
+if (APP.isTouch) CONFIG.WIND.particles = Math.round(CONFIG.WIND.particles * 0.5);
 
 // --------------------------------------------------------------------
 // 1. Sidebar: layer legend
@@ -27,8 +31,17 @@ Object.keys(CONFIG.LABELS).forEach(key => {
 window.toggleSidebar = function () {
     const c = document.getElementById('sidebar-container');
     c.classList.toggle('collapsed');
-    document.getElementById('toggle-btn').innerHTML = c.classList.contains('collapsed') ? '❯' : '❮';
+    syncToggle();
 };
+function syncToggle() {
+    const c = document.getElementById('sidebar-container'), col = c.classList.contains('collapsed');
+    document.getElementById('toggle-btn').innerHTML = APP.isSmall() ? (col ? '▲ Controls' : '▼ Hide') : (col ? '❯' : '❮');
+}
+// phones: start with the panel folded away so the 3D view is visible
+if (APP.isSmall() || (APP.isTouch && innerHeight < 500)) document.getElementById('sidebar-container').classList.add('collapsed');
+syncToggle();
+matchMedia('(max-width: 768px)').addEventListener('change', syncToggle);
+new MutationObserver(syncToggle).observe(document.getElementById('sidebar-container'), { attributes: true, attributeFilter: ['class'] });
 
 // --------------------------------------------------------------------
 // 2. Three.js scene
@@ -40,7 +53,7 @@ scene.fog = new THREE.Fog(CONFIG.COLORS.background, 300, 2200);
 const camera = APP.camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 6000);
 const renderer = APP.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
 renderer.setSize(innerWidth, innerHeight);
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+renderer.setPixelRatio(Math.min(devicePixelRatio, APP.isTouch ? 1.25 : 1.5));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.BasicShadowMap;
 renderer.shadowMap.autoUpdate = false;
@@ -56,7 +69,8 @@ scene.add(ambient);
 const sun = new THREE.DirectionalLight(0xffffff, 0.8);
 sun.castShadow = true;
 const maxTex = renderer.capabilities.maxTextureSize;
-sun.shadow.mapSize.set(Math.min(4096, maxTex), Math.min(4096, maxTex));
+const shadowRes = Math.min(APP.isTouch ? 2048 : 4096, maxTex);
+sun.shadow.mapSize.set(shadowRes, shadowRes);
 sun.shadow.bias = -0.001;
 scene.add(sun, sun.target);
 
@@ -223,7 +237,8 @@ VoxelGrid.load().then(grid => {
 
     // camera
     controls.target.set(b.cx, b.minY, b.cz);
-    camera.position.set(b.cx + b.width * 0.5, b.minY + b.width * 0.3, b.cz + b.width * 0.5);
+    const zoomOut = camera.aspect < 1 ? 1.9 : 1;           // portrait phones need more distance
+    camera.position.set(b.cx + b.width * 0.5 * zoomOut, b.minY + b.width * 0.3 * zoomOut, b.cz + b.width * 0.5 * zoomOut);
     controls.update();
 
     updateSunPosition(parseInt(timeSlider.value));

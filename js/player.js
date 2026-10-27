@@ -12,7 +12,8 @@
 
     const P = APP.player = {
         pos: new THREE.Vector3(), vel: new THREE.Vector3(),
-        yaw: 0, pitch: 0, onGround: false, fly: false, tpDist: 6, spawned: false
+        yaw: 0, pitch: 0, onGround: false, fly: false, tpDist: 6, spawned: false,
+        analog: { x: 0, y: 0 }          // virtual joystick (touch), -1..1
     };
     const keys = {};
     let grid, layers, solidCode, terrainCode, saved = null, eyeOffset = 0, walkPhase = 0, facing = 0;
@@ -123,6 +124,7 @@
         avatar.visible = mode === 'tp';
         document.body.classList.add('walking');
         document.body.classList.remove('igniting');
+        if (APP.isTouch) document.getElementById('sidebar-container').classList.add('collapsed');
         syncButtons();
         lock();
     }
@@ -145,13 +147,14 @@
         ['orbit', 'fp', 'tp'].forEach(m => $('view-' + m).classList.toggle('active', APP.mode === m));
         $('hud-mode').textContent = APP.mode === 'fp' ? 'First person' : APP.mode === 'tp' ? 'Third person' : '';
         $('hud-fly').style.display = P.fly ? 'inline-block' : 'none';
+        document.body.classList.toggle('flying', P.fly);
     }
     $('view-orbit').onclick = () => exit();
     $('view-fp').onclick = () => enter('fp');
     $('view-tp').onclick = () => enter('tp');
 
     // ---------------- input ----------------
-    const lock = () => { if (cv.requestPointerLock) try { const r = cv.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (e) { } };
+    const lock = () => { if (APP.isTouch) return; if (cv.requestPointerLock) try { const r = cv.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (e) { } };
     cv.addEventListener('click', () => { if (APP.mode !== 'orbit' && !document.pointerLockElement) lock(); });
     document.addEventListener('pointerlockchange', () => {
         $('hud-unlocked').style.display = (APP.mode !== 'orbit' && !document.pointerLockElement) ? 'block' : 'none';
@@ -162,11 +165,16 @@
     });
     // drag-to-look fallback (touch / no pointer lock)
     let drag = null;
-    cv.addEventListener('pointerdown', e => { if (APP.mode !== 'orbit' && !document.pointerLockElement) drag = { x: e.clientX, y: e.clientY }; });
-    addEventListener('pointerup', () => drag = null);
+    cv.addEventListener('pointerdown', e => {
+        if (APP.mode !== 'orbit' && !document.pointerLockElement && !drag) drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    });
+    const endDrag = e => { if (drag && e.pointerId === drag.id) drag = null; };
+    addEventListener('pointerup', endDrag);
+    addEventListener('pointercancel', endDrag);
     addEventListener('pointermove', e => {
-        if (!drag) return;
-        look((e.clientX - drag.x) * 1.5, (e.clientY - drag.y) * 1.5); drag = { x: e.clientX, y: e.clientY };
+        if (!drag || e.pointerId !== drag.id) return;   // ignore the joystick finger
+        const k = e.pointerType === 'touch' ? 1.8 : 1.5;
+        look((e.clientX - drag.x) * k, (e.clientY - drag.y) * k); drag.x = e.clientX; drag.y = e.clientY;
     });
     function look(dx, dy) {
         P.yaw -= dx * 0.0022;
@@ -206,8 +214,10 @@
         if (keys.KeyS || keys.ArrowDown) { ix -= fwdX; iz -= fwdZ; }
         if (keys.KeyD || keys.ArrowRight) { ix += rgtX; iz += rgtZ; }
         if (keys.KeyA || keys.ArrowLeft) { ix -= rgtX; iz -= rgtZ; }
-        const il = Math.hypot(ix, iz); if (il) { ix /= il; iz /= il; }
-        const run = keys.ShiftLeft || keys.ShiftRight;
+        const a = P.analog, am = Math.hypot(a.x, a.y);
+        if (am > 0.08) { ix += fwdX * -a.y + rgtX * a.x; iz += fwdZ * -a.y + rgtZ * a.x; }
+        const il = Math.hypot(ix, iz); if (il > 1) { ix /= il; iz /= il; }   // analog keeps partial speed
+        const run = keys.ShiftLeft || keys.ShiftRight || am > 0.92;
         const sp = P.fly ? FLY * (run ? 3 : 1) : (run ? RUN : WALK);
 
         const k = Math.min(1, dt * (P.onGround || P.fly ? 12 : 3));
@@ -260,7 +270,7 @@
             // camera boom with collision
             target.set(P.pos.x, P.pos.y + 1.6 + eyeOffset, P.pos.z);
             back.set(Math.sin(P.yaw) * Math.cos(P.pitch), -Math.sin(P.pitch), Math.cos(P.yaw) * Math.cos(P.pitch));
-            const hit = grid.raycast(target, back, P.tpDist, (i, c) => solidCode[c] && !layers.removed[i]);
+            const hit = grid.raycast(target, back, P.tpDist, (i, c) => !layers.removed[i] && layers.visibleType(c)); // trees too, so the view never sits inside a canopy
             const d = hit ? Math.max(0.6, hit.dist - 0.3) : P.tpDist;
             cam.position.copy(target).addScaledVector(back, d);
             target.y += 0.6;          // look slightly over the head so the crosshair is free

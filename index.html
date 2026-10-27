@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Voxel Visualization FT UGM</title>
     <link rel="stylesheet" href="style.css">
 </head>
@@ -23,7 +23,12 @@
                     <button id="view-fp">First person</button>
                     <button id="view-tp">Third person</button>
                 </div>
-                <div class="hint">
+                <div class="hint touch-only">
+                    Walkers spawn on open ground at the centre of the current view.<br>
+                    <b>Left thumb</b>: joystick (push to the edge to run) · <b>Right thumb</b>: drag to look ·
+                    <b>Pinch</b>: zoom the 3rd-person camera. Landscape orientation works best.
+                </div>
+                <div class="hint desktop-only">
                     Walkers spawn on open ground at the centre of the current orbit view.<br>
                     <kbd>W A S D</kbd> move · <kbd>Mouse</kbd> look · <kbd>Space</kbd> jump · <kbd>Shift</kbd> run ·
                     <kbd>G</kbd> fly · <kbd>V</kbd> switch 1st/3rd · <kbd>F</kbd> ignite at crosshair ·
@@ -156,6 +161,19 @@
         <div id="hud-unlocked">Mouse released — click the scene to look around · <kbd>Esc</kbd> again for orbit view</div>
     </div>
     <div id="underwater"></div>
+
+    <!-- Touch controls (phones / tablets, walk modes only) -->
+    <div id="touch-ui">
+        <button id="touch-exit">✕ Exit</button>
+        <div id="joy"><div id="joy-knob"></div></div>
+        <div id="touch-btns">
+            <button data-key="KeyV" class="small">1st/3rd</button>
+            <button data-key="KeyG" class="small">Fly</button>
+            <button data-key="KeyF" class="small fire">Ignite</button>
+            <button data-key="KeyC" data-hold class="fly-only">Down</button>
+            <button data-key="Space" data-hold class="big">Jump</button>
+        </div>
+    </div>
     <div id="toast"></div>
     <div id="attribution"></div>
 
@@ -169,5 +187,6 @@
     <script src="js/fire.js"></script>
     <script src="js/player.js"></script>
     <script src="js/basemap.js"></script>
+    <script src="js/touch.js"></script>
 </body>
 </html>
