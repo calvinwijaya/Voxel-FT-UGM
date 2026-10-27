@@ -13,82 +13,161 @@
     <div id="sidebar-container">
         <div id="sidebar">
             <h1 class="app-title">Voxel Visualization of Faculty of Engineering, Universitas Gadjah Mada</h1>
-            
-            <div class="control-group">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                    <h4 style="margin: 0;">Legend & Layers</h4>
-                    <div>
-                        <button class="btn-default" onclick="toggleAllLayers(true)" style="padding: 3px 8px; font-size: 10px;">Show All</button>
-                        <button class="btn-default" onclick="toggleAllLayers(false)" style="padding: 3px 8px; font-size: 10px;">Hide All</button>
-                    </div>
-                </div>
-                <div id="controls-container">
-                    </div>
-            </div>
+            <div id="stat-voxels" class="subtle"></div>
 
-            <div class="control-group" style="padding-top: 15px; border-top: 1px dashed #52525b;">
+            <!-- ============ VIEW MODE ============ -->
+            <details class="section" open>
+                <summary>View Mode</summary>
+                <div class="seg">
+                    <button id="view-orbit" class="active">Orbit</button>
+                    <button id="view-fp">First person</button>
+                    <button id="view-tp">Third person</button>
+                </div>
+                <div class="hint">
+                    Walkers spawn on open ground at the centre of the current orbit view.<br>
+                    <kbd>W A S D</kbd> move · <kbd>Mouse</kbd> look · <kbd>Space</kbd> jump · <kbd>Shift</kbd> run ·
+                    <kbd>G</kbd> fly · <kbd>V</kbd> switch 1st/3rd · <kbd>F</kbd> ignite at crosshair ·
+                    <kbd>R</kbd> respawn · <kbd>Esc</kbd> release mouse, <kbd>Esc</kbd> again = orbit
+                </div>
+            </details>
+
+            <!-- ============ LAYERS ============ -->
+            <details class="section" open>
+                <summary>Legend &amp; Layers</summary>
+                <div class="row-end">
+                    <button class="btn-default" onclick="toggleAllLayers(true)">Show All</button>
+                    <button class="btn-default" onclick="toggleAllLayers(false)">Hide All</button>
+                </div>
+                <div id="controls-container"></div>
                 <div class="legend-item" style="background: transparent;">
                     <input type="color" id="color-background" value="#FFFFFF" onchange="updateColor('background', this.value)">
                     <label for="color-background">Sky Background</label>
                     <button class="btn-default" onclick="resetColor('background')">Default</button>
                 </div>
-            </div>
+            </details>
 
-            <div class="control-group" style="padding-top: 15px; border-top: 1px dashed #52525b;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                    <h4 style="margin: 0;">Time of Day (Shadow Analysis)</h4>
-                    <button id="play-btn" class="btn-default" style="padding: 2px 8px; font-size: 10px; background-color: #3b82f6;">Play</button>
+            <!-- ============ SUN & FLOOD ============ -->
+            <details class="section">
+                <summary>Sun &amp; Flood</summary>
+                <div class="row-between">
+                    <h4>Time of Day (Shadow Analysis)</h4>
+                    <button id="play-btn" class="btn-default" style="background-color: #3b82f6;">Play</button>
                 </div>
-                <div style="display: flex; align-items: center; gap: 10px; color: #a1a1aa; font-size: 11px;">
+                <div class="slider-row">
                     <span>06:00</span>
-                    <input type="range" id="time-slider" min="6" max="18" step="1" value="12" list="time-ticks" style="flex: 1; accent-color: #fbbf24;">
+                    <input type="range" id="time-slider" min="6" max="18" step="1" value="12" style="accent-color: #fbbf24;">
                     <span>18:00</span>
                 </div>
-                <datalist id="time-ticks">
-                    <option value="6"></option><option value="7"></option><option value="8"></option>
-                    <option value="9"></option><option value="10"></option><option value="11"></option>
-                    <option value="12"></option><option value="13"></option><option value="14"></option>
-                    <option value="15"></option><option value="16"></option><option value="17"></option>
-                    <option value="18"></option>
-                </datalist>
-                <div id="current-time-label" style="text-align: center; color: #fbbf24; font-size: 12px; margin-top: 5px; font-weight: 500;">12:00</div>
-            </div>
+                <div id="current-time-label" class="center-label" style="color:#fbbf24">12:00</div>
 
-            <div class="control-group" style="padding-top: 15px; border-top: 1px dashed #52525b;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                    <h4 style="margin: 0; color: #3b82f6;">Flood Simulation</h4>
-                </div>
-                <div style="display: flex; align-items: center; gap: 10px; color: #a1a1aa; font-size: 11px;">
+                <h4 style="margin-top:18px; color:#3b82f6">Flood Simulation</h4>
+                <div class="slider-row">
                     <span>Base</span>
-                    <input type="range" id="flood-slider" min="0" max="30" step="1" value="0" style="flex: 1; accent-color: #3b82f6;">
-                    <span id="flood-label" style="min-width: 30px; text-align: right; color: #60a5fa; font-weight: bold;">0 m</span>
+                    <input type="range" id="flood-slider" min="0" max="30" step="1" value="0" style="accent-color: #3b82f6;">
+                    <span id="flood-label" class="value">0 m</span>
                 </div>
-                <div style="font-size: 10px; color: #71717a; margin-top: 5px; font-style: italic;">
-                    *Swipe to simulate a rise in river water levels (flooding).
+                <div class="hint">Rise of water above the lowest river voxel. Flooded voxels cannot burn.</div>
+            </details>
+
+            <!-- ============ WIND ============ -->
+            <details class="section" open>
+                <summary>Wind</summary>
+                <div class="seg">
+                    <button id="wind-live-btn">Live data</button>
+                    <button id="wind-manual-btn">Manual</button>
+                    <button id="wind-refresh" title="Refresh live wind">⟳</button>
                 </div>
-            </div>
+                <div id="wind-status" class="status">—</div>
+                <label class="field">Speed <b id="wind-speed-label"></b> <i id="wind-beaufort"></i></label>
+                <input type="range" id="wind-speed" min="0" max="25" step="0.5" value="2" style="accent-color:#38bdf8">
+                <label class="field">Direction (from) <b id="wind-dir-label"></b></label>
+                <input type="range" id="wind-dir" min="0" max="359" step="1" value="90" style="accent-color:#38bdf8">
+                <div id="wind-meta" class="subtle"></div>
+                <div class="legend-item" style="margin-top:8px">
+                    <input type="checkbox" id="wind-show" checked>
+                    <label for="wind-show">Show wind streamlines</label>
+                </div>
+            </details>
+
+            <!-- ============ FIRE ============ -->
+            <details class="section" open>
+                <summary>Fire Spread</summary>
+                <button id="fire-arm" class="btn-wide">Place ignition point</button>
+                <div class="seg" style="margin-top:8px">
+                    <button id="fire-play">Run</button>
+                    <button id="fire-step">Step</button>
+                    <button id="fire-reset">Reset</button>
+                </div>
+                <label class="field">Simulation speed <b id="fire-speed-label"></b></label>
+                <input type="range" id="fire-speed" min="1" max="20" step="1" value="4" style="accent-color:#f97316">
+                <label class="field">Relative humidity <b id="fire-humidity-label"></b></label>
+                <input type="range" id="fire-humidity" min="10" max="100" step="1" value="60" style="accent-color:#f97316">
+                <label class="field">Building flammability <b id="fire-bldg-label"></b></label>
+                <input type="range" id="fire-bldg" min="0" max="300" step="5" value="100" style="accent-color:#f97316">
+                <div id="fire-stats" class="stats"></div>
+                <div class="hint">Spread uses the current wind (live or manual). Humidity follows live data until you move the slider. Embers jump downwind above 5 m/s.</div>
+            </details>
+
+            <!-- ============ BASEMAP ============ -->
+            <details class="section">
+                <summary>Basemap</summary>
+                <select id="basemap-select">
+                    <option value="satellite">Satellite (Esri)</option>
+                    <option value="osm">OpenStreetMap</option>
+                    <option value="light">CARTO Light</option>
+                    <option value="dark">CARTO Dark</option>
+                    <option value="none">None</option>
+                </select>
+                <div id="basemap-status" class="subtle"></div>
+                <div class="legend-item" style="margin-top:8px">
+                    <input type="checkbox" id="basemap-ground">
+                    <label for="basemap-ground">Colour ground voxels from imagery</label>
+                </div>
+                <h4 style="margin-top:12px">Align to map</h4>
+                <label class="field">Shift East <b id="geo-e-label"></b></label>
+                <input type="range" id="geo-e" min="-300" max="300" step="1">
+                <label class="field">Shift North <b id="geo-n-label"></b></label>
+                <input type="range" id="geo-n" min="-300" max="300" step="1">
+                <label class="field">Rotation <b id="geo-rot-label"></b></label>
+                <input type="range" id="geo-rot" min="-45" max="45" step="0.5">
+                <div class="legend-item" style="margin-top:6px">
+                    <input type="checkbox" id="geo-flip"><label for="geo-flip">Flip Z (grid z grows northwards)</label>
+                </div>
+                <button id="geo-copy" class="btn-default">Copy georef</button>
+            </details>
 
             <div class="metadata">
                 <p><strong>Metadata:</strong><br>
                 The data were derived from aerial LiDAR acquisition (UAV LiDAR) and photogrammetric processing of the Faculty of Engineering, Universitas Gadjah Mada. The height of each building was extracted from a normalized Digital Surface Model (nDSM) or Object Height Model (OHM). Building outlines were manually digitized from orthophotos.</p>
-                
-                <p style="margin-top: 15px;">
-                    <strong>Authors:</strong><br>Calvin Wijaya, Trias Aditya, Ruli Andaru
-                </p>
-                <p>
-                    <strong>Contact:</strong><br>
-                    <a href="mailto:calvin.wijaya@ugm.ac.id">calvin.wijaya@ugm.ac.id</a>
-                </p>
+                <p><strong>Wind data:</strong> <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0).</p>
+                <p style="margin-top: 15px;"><strong>Authors:</strong><br>Calvin Wijaya, Trias Aditya, Ruli Andaru</p>
+                <p><strong>Contact:</strong><br><a href="mailto:calvin.wijaya@ugm.ac.id">calvin.wijaya@ugm.ac.id</a></p>
             </div>
         </div>
         <button id="toggle-btn" onclick="toggleSidebar()">❮</button>
     </div>
 
-    <div id="compass">N</div>
+    <div id="compass">N<div id="wind-arrow" title="Wind blows this way"></div></div>
+
+    <!-- HUD for walk modes -->
+    <div id="crosshair"></div>
+    <div id="hud">
+        <span id="hud-mode"></span><span id="hud-fly" class="pill">FLY</span><span id="hud-pos"></span>
+        <div id="hud-unlocked">Mouse released — click the scene to look around · <kbd>Esc</kbd> again for orbit view</div>
+    </div>
+    <div id="underwater"></div>
+    <div id="toast"></div>
+    <div id="attribution"></div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-    
-    <script src="script.js"></script>
+
+    <script src="js/config.js"></script>
+    <script src="js/voxel-grid.js"></script>
+    <script src="js/main.js"></script>
+    <script src="js/wind.js"></script>
+    <script src="js/fire.js"></script>
+    <script src="js/player.js"></script>
+    <script src="js/basemap.js"></script>
 </body>
 </html>
