@@ -129,7 +129,7 @@
         cone.addColorStop(0, 'rgba(255,255,255,0.35)'); cone.addColorStop(1, 'rgba(255,255,255,0)');
         ctx.fillStyle = cone;
         ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, R * 0.8, -Math.PI / 2 - Math.min(fov, 1.2), -Math.PI / 2 + Math.min(fov, 1.2)); ctx.closePath(); ctx.fill();
-        ctx.fillStyle = APP.mode === 'tp' ? '#fb923c' : '#38bdf8';
+        ctx.fillStyle = APP.mode === 'tp' ? (APP.catDef ? APP.catDef.ui : '#fb923c') : '#38bdf8';
         ctx.strokeStyle = '#fff'; ctx.lineWidth = 3;
         ctx.beginPath(); ctx.moveTo(0, -15); ctx.lineTo(10, 11); ctx.lineTo(0, 5); ctx.lineTo(-10, 11); ctx.closePath();
         ctx.stroke(); ctx.fill();

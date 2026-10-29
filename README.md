@@ -1,4 +1,4 @@
-# Voxel Visualization – Faculty of Engineering, UGM (v4)
+# Voxel Visualization – Faculty of Engineering, UGM (v5)
 
 Lightweight three.js voxel city for urban simulation: shadows, flood, **live wind**, **fire spread**, and **Minecraft-style first/third-person** exploration on a web basemap.
 
@@ -15,13 +15,13 @@ js/weather.js               Open-Meteo weather + air quality (15-min refresh)
 js/rain.js                  clouds, rain, lightning from live/manual weather
 js/wind.js                  live (from weather.js) / manual wind + streamlines
 js/fire.js                  cellular-automaton fire spread, ignition picking, smoke
-js/player.js                first person / third person (tabby cat with wings), collision, fixed spawn
+js/player.js                first person / third person (cat with wings in fly mode), collision, fixed spawn
+js/cats.js                  six cat avatars (coat + facial expression) and the Cat Avatar panel
 js/touch.js                 on-screen joystick & buttons for phones
 js/minimap.js               heading-up minimap in first / third person
 js/basemap.js               XYZ tiles draped on a terrain-following surface
 favicon.svg / .ico          tab icon (+ apple-touch-icon.png)
 environment_blocks.vxl.gz   2 m voxel data, 50 KB (generated)
-environment_blocks_1m.vxl.gz, environment_blocks_05m.vxl.gz   1 m / 0.5 m data (you generate these)
 environment_blocks.json     original 2 m data, used only as a fallback
 tools/compress_voxels.py    JSON -> .vxl.gz converter (streams huge files)
 ```
@@ -34,11 +34,10 @@ python tools/compress_voxels.py environment_blocks_1m.json  environment_blocks_1
 python tools/compress_voxels.py environment_blocks_05m.json environment_blocks_05m.vxl.gz --size 0.5
 ```
 Upload the `.vxl.gz` files next to `index.html` (the big JSON files are not needed on the website).
-The **Grid size** buttons reload the page with `?res=2m`, `?res=1m` or `?res=05m`; file names are set in
-`CONFIG.DATASETS` (js/config.js). Format: dense `uint8` grid (0 = empty, k = class k-1) stored column by
+The page loads the 2 m grid (`CONFIG.DATASETS` in js/config.js); finer grids can be added back
+there, but 1 m / 0.5 m proved too heavy for most browsers. Format: dense `uint8` grid (0 = empty, k = class k-1) stored column by
 column, gzipped; the header records the voxel size ("VXL2"). The browser decompresses it natively.
 
-Memory guide: 2 m ≈ 40 MB, 1 m ≈ 150 MB, 0.5 m ≈ 700 MB+ of browser memory — 0.5 m is for desktops.
 
 ## Wind
 Default source is [Open-Meteo](https://open-meteo.com/) `current` weather (free, no key, CORS, 15-min updates):

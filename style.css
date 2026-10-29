@@ -347,3 +347,20 @@ body.touch #minimap { top: calc(12px + env(safe-area-inset-top)); bottom: auto; 
 body.touch #mm-in { bottom: auto; top: 96px; right: auto; left: -6px; }
 body.touch #mm-out { bottom: auto; top: 96px; right: -6px; }
 body.touch.walking #compass { display: none; }
+
+/* =====================================================================
+   v5: cat avatar picker
+   ===================================================================== */
+.cat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.cat-card {
+    display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 4px 7px;
+    background: rgba(255,255,255,.04); border: 1.5px solid transparent; border-radius: 8px;
+    color: #e4e4e7; font-family: inherit; cursor: pointer; transition: .15s;
+}
+.cat-card:hover { background: rgba(255,255,255,.08); }
+.cat-card.active { border-color: var(--cat); background: rgba(255,255,255,.09); }
+.cat-card img { width: 72px; height: 72px; image-rendering: auto; }
+.cat-swatch { width: 56px; height: 56px; border-radius: 10px; background: var(--cat); margin: 8px 0; }
+.cat-card b { font-size: 12.5px; }
+.cat-card span { font-size: 10px; color: #a1a1aa; text-align: center; line-height: 1.25; }
+.cat-card em { font-style: normal; font-size: 10px; color: var(--cat); font-weight: 600; margin-top: 2px; }

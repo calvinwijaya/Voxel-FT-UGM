@@ -41,62 +41,17 @@
     //  The cat (local forward = -Z, feet at y = 0)
     // =================================================================
     const cat = new THREE.Group();
-    const M = c => new THREE.MeshLambertMaterial({ color: c });
-    const ORANGE = M(0xe8862a), STRIPE = M(0xa94f12), CREAM = M(0xfff1dc), PINK = M(0xf29bb0),
-          EYE = M(0x7cc243), PUPIL = M(0x111111), FEATHER = M(0xfffaf0), FEATHER2 = M(0xf3e6cc);
-    const part = (w, h, d, m, x, y, z, parent) => {
-        const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
-        b.position.set(x, y, z); b.castShadow = true; (parent || cat).add(b); return b;
-    };
-    // body
-    part(0.62, 0.52, 1.15, ORANGE, 0, 0.74, 0);
-    part(0.5, 0.06, 0.8, CREAM, 0, 0.47, -0.05);                          // belly
-    [-0.36, -0.12, 0.12, 0.36].forEach(z => part(0.64, 0.3, 0.09, STRIPE, 0, 0.86, z)); // tabby bands
-    part(0.08, 0.02, 1.0, STRIPE, 0, 1.005, 0.02);                         // spine line
-    // head
-    const head = new THREE.Group(); head.position.set(0, 1.0, -0.66); cat.add(head);
-    part(0.56, 0.46, 0.46, ORANGE, 0, 0, 0, head);
-    part(0.32, 0.16, 0.06, CREAM, 0, -0.1, -0.25, head);                   // muzzle
-    part(0.08, 0.05, 0.03, PINK, 0, -0.03, -0.285, head);                  // nose
-    [-0.13, 0.13].forEach(x => { part(0.11, 0.1, 0.02, EYE, x, 0.06, -0.235, head); part(0.03, 0.09, 0.024, PUPIL, x, 0.06, -0.24, head); });
-    [-0.1, 0, 0.1].forEach(x => part(0.04, 0.12, 0.02, STRIPE, x, 0.17, -0.235, head));   // forehead "M"
-    [-1, 1].forEach(s => {
-        const ear = new THREE.Group(); ear.position.set(0.17 * s, 0.27, 0.02); ear.rotation.z = -0.22 * s; head.add(ear);
-        part(0.17, 0.18, 0.08, ORANGE, 0, 0.06, 0, ear);
-        part(0.09, 0.11, 0.02, PINK, 0, 0.05, -0.045, ear);
-        part(0.06, 0.03, 0.12, CREAM, 0.27 * s, -0.12, -0.2, head);        // whisker pads
-    });
-    // legs (pivot at the hip)
-    const legs = [];
-    [[-0.2, -0.38], [0.2, -0.38], [-0.2, 0.38], [0.2, 0.38]].forEach(([x, z], i) => {
-        const g = new THREE.Group(); g.position.set(x, 0.52, z); cat.add(g);
-        part(0.17, 0.46, 0.17, ORANGE, 0, -0.23, 0, g);
-        part(0.17, 0.06, 0.17, STRIPE, 0, -0.2, 0, g);
-        part(0.18, 0.07, 0.21, CREAM, 0, -0.485, -0.02, g);                 // paw
-        legs.push(g);
-    });
-    // tail: chain of segments
-    const tail = []; let parent = cat;
-    for (let k = 0; k < 5; k++) {
-        const g = new THREE.Group();
-        g.position.set(0, k === 0 ? 0.88 : 0, k === 0 ? 0.56 : 0.24);
-        parent.add(g);
-        part(0.12, 0.12, 0.26, k % 2 ? STRIPE : ORANGE, 0, 0, 0.12, g);
-        if (k === 4) part(0.12, 0.12, 0.08, CREAM, 0, 0, 0.27, g);
-        tail.push(g); parent = g;
+    let head, legs, tail, wings;
+    // the avatar comes from js/cats.js (chosen in the "Cat Avatar" panel)
+    function setCat(id) {
+        const def = CATS.find(c => c.id === id) || CATS[0];
+        const wasFlying = wings && wings[0].userData.grow;
+        ({ head, legs, tail, wings } = buildCat(cat, def));
+        if (wasFlying) wings.forEach(w => w.userData.grow = wasFlying);
+        APP.catDef = def;
     }
-    // wings (only while flying)
-    const wings = [-1, 1].map(s => {
-        const root = new THREE.Group(); root.position.set(0.3 * s, 0.98, -0.18); cat.add(root);
-        const arm = new THREE.Group(); root.add(arm);
-        // three rows of feathers fanning outwards
-        [[0.95, 0.22, 0], [0.8, 0.2, 0.18], [0.6, 0.18, 0.34]].forEach(([len, w, z], r) => {
-            part(len, 0.05, w, r ? FEATHER2 : FEATHER, (len / 2 + 0.02) * s, 0.02 - r * 0.015, z, arm);
-        });
-        part(0.25, 0.08, 0.2, FEATHER, 0.12 * s, 0.03, -0.04, arm);          // shoulder
-        root.visible = false; root.userData = { s, arm, grow: 0 };
-        return root;
-    });
+    setCat(window.CAT_CHOICE);
+    APP.setCat = setCat;
     cat.visible = false;
     APP.cat = cat;
 

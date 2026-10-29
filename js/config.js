@@ -6,7 +6,7 @@ window.CONFIG = {
     // Each entry is one compressed file made with tools/compress_voxels.py.
     // The page loads the one chosen with the "Grid size" buttons (stored in the URL, e.g. ?res=1m).
     DATASETS: {
-        '2m':  { label: '2 m',   size: 2,   url: 'environment_blocks.vxl.gz',     json: 'environment_blocks.json' },
+        '2m':  { label: '2 m',   size: 2,   url: 'environment_blocks.vxl.gz',     json: 'environment_blocks.json' }
     },
     DEFAULT_RES: '2m',
 
