@@ -37,6 +37,7 @@ function syncToggle() {
     const c = document.getElementById('sidebar-container'), col = c.classList.contains('collapsed');
     document.getElementById('toggle-btn').innerHTML = APP.isSmall() ? (col ? '▲ Controls' : '▼ Hide') : (col ? '❯' : '❮');
 }
+
 // phones: start with the panel folded away so the 3D view is visible
 if (APP.isSmall() || (APP.isTouch && innerHeight < 500)) document.getElementById('sidebar-container').classList.add('collapsed');
 syncToggle();
@@ -73,6 +74,7 @@ const shadowRes = Math.min(APP.isTouch ? 2048 : 4096, maxTex);
 sun.shadow.mapSize.set(shadowRes, shadowRes);
 sun.shadow.bias = -0.001;
 scene.add(sun, sun.target);
+APP.sun = sun; APP.ambient = ambient;
 
 const materials = APP.materials = {};
 Object.keys(CONFIG.LABELS).forEach(t => materials[t] = new THREE.MeshLambertMaterial({ color: CONFIG.COLORS[t] }));
@@ -82,55 +84,111 @@ const boxGeo = APP.boxGeo = new THREE.BoxGeometry(VS * 0.98, VS * 0.98, VS * 0.9
 // 3. VoxelLayers — one InstancedMesh per class, only EXPOSED voxels drawn.
 //    Hidden voxels are added on demand when a neighbour burns away.
 // --------------------------------------------------------------------
+/** Open-addressing int -> int hash map (cell index -> instance index). Far smaller than an
+ *  Int32Array over every cell, which matters for 1 m / 0.5 m grids (hundreds of millions of cells). */
+class IntMap {
+    constructor(cap = 1 << 16) { this._alloc(cap); }
+    _alloc(cap) {
+        let c = 1; while (c < cap * 2) c <<= 1;
+        this.mask = c - 1; this.keys = new Int32Array(c).fill(-1); this.vals = new Int32Array(c); this.size = 0;
+    }
+    _slot(k) { let h = Math.imul(k, 0x9E3779B1) & this.mask; while (this.keys[h] !== -1 && this.keys[h] !== k) h = (h + 1) & this.mask; return h; }
+    get(k) { const h = this._slot(k); return this.keys[h] === k ? this.vals[h] : -1; }
+    set(k, v) {
+        if ((this.size + 1) * 2 > this.mask) {                       // keep load factor < 0.5
+            const ok = this.keys, ov = this.vals; this._alloc(this.size * 2 + 16);
+            for (let q = 0; q < ok.length; q++) if (ok[q] !== -1) this.set(ok[q], ov[q]);
+        }
+        const h = this._slot(k); if (this.keys[h] === -1) { this.keys[h] = k; this.size++; } this.vals[h] = v;
+    }
+}
+
 class VoxelLayers {
     constructor(grid) {
         this.grid = grid;
         this.meshes = {};          // name -> InstancedMesh
         this.cellOf = {};          // code -> Int32Array(instance -> cell)
-        this.instOf = new Int32Array(grid.N);
-        this.removed = new Uint8Array(grid.N);
+        this.instOf = new IntMap();
+        this.removedBits = new Uint8Array((grid.N + 7) >> 3);   // 1 bit per cell
+        this.dirtyCols = [];       // columns whose top changed (minimap)
         this._m = new THREE.Matrix4();
         this._zero = new THREE.Matrix4().makeScale(0, 0, 0);
         this._white = new THREE.Color(1, 1, 1);
         this.build();
     }
 
+    isRemoved(i) { return (this.removedBits[i >> 3] >> (i & 7)) & 1; }
+    occupied(i) { return this.grid.data[i] !== 0 && !this.isRemoved(i); }
+
     isExposed(lx, ly, lz) {
-        const g = this.grid, d = g.data, rm = this.removed;
-        const occ = (x, y, z) => { if (!g.inside(x, y, z)) return false; const i = g.idx(x, y, z); return d[i] && !rm[i]; };
-        return !(occ(lx + 1, ly, lz) && occ(lx - 1, ly, lz) && occ(lx, ly + 1, lz) &&
-                 occ(lx, ly - 1, lz) && occ(lx, ly, lz + 1) && occ(lx, ly, lz - 1));
+        const g = this.grid, d = g.data, ny = g.ny, nz = g.nz;
+        if (lx === 0 || ly === 0 || lz === 0 || lx === g.nx - 1 || ly === ny - 1 || lz === nz - 1) return true;
+        const i = (lx * nz + lz) * ny + ly, sx = nz * ny;
+        const occ = n => d[n] && !this.isRemoved(n);
+        return !(occ(i + 1) && occ(i - 1) && occ(i + ny) && occ(i - ny) && occ(i + sx) && occ(i - sx));
+    }
+
+    _makeMesh(name, code, cap) {
+        const mesh = new THREE.InstancedMesh(boxGeo, materials[name], cap);
+        // colour buffer created up front (r128 compiles the shader with/without it on first render)
+        mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3).fill(1), 3);
+        mesh.count = 0;
+        mesh.frustumCulled = false;
+        const terrain = name === 'ground' || name === 'river';
+        mesh.castShadow = !terrain;
+        mesh.receiveShadow = terrain;
+        mesh.userData.type = name;
+        const cb = document.getElementById('visibility-' + name);
+        mesh.visible = cb ? cb.checked : true;
+        return mesh;
+    }
+
+    /** enlarge a layer when fire uncovers more voxels than it was sized for */
+    _grow(code) {
+        const name = this.grid.typeName(code), old = this.meshes[name];
+        const cap = Math.ceil(old.instanceMatrix.count * 1.5) + 1024;
+        const mesh = this._makeMesh(name, code, cap);
+        mesh.instanceMatrix.array.set(old.instanceMatrix.array);
+        mesh.instanceColor.array.set(old.instanceColor.array);
+        mesh.count = old.count; mesh.visible = old.visible;
+        const cells = new Int32Array(cap); cells.set(this.cellOf[code]); this.cellOf[code] = cells;
+        APP.scene.remove(old); old.dispose(); APP.scene.add(mesh);
+        this.meshes[name] = mesh;
+        return mesh;
     }
 
     build() {
         const g = this.grid;
         Object.values(this.meshes).forEach(m => { APP.scene.remove(m); m.dispose(); });
         this.meshes = {}; this.cellOf = {};
-        this.instOf.fill(-1); this.removed.fill(0);
+        this.instOf = new IntMap(1 << 16); this.removedBits.fill(0); this.dirtyCols = [];
 
-        const totals = new Int32Array(g.types.length + 1);
-        for (let i = 0; i < g.N; i++) totals[g.data[i]]++;
-
+        // pass 1: count all voxels and the exposed ones per class
+        const totals = new Float64Array(g.types.length + 1), exposed = new Float64Array(g.types.length + 1);
+        for (let lx = 0; lx < g.nx; lx++) for (let lz = 0; lz < g.nz; lz++) {
+            const base = (lx * g.nz + lz) * g.ny;
+            for (let ly = 0; ly < g.ny; ly++) {
+                const c = g.data[base + ly]; if (!c) continue;
+                totals[c]++;
+                if (this.isExposed(lx, ly, lz)) exposed[c]++;
+            }
+        }
+        let expTotal = 0;
         g.types.forEach((name, k) => {
             const code = k + 1;
-            if (!totals[code] || !materials[name]) return;
-            const mesh = new THREE.InstancedMesh(boxGeo, materials[name], totals[code]);
-            // initialise instanceColor BEFORE first render (shader define) and BEFORE
-            // shrinking .count (setColorAt sizes the buffer from .count in r128)
-            for (let j = 0; j < totals[code]; j++) mesh.setColorAt(j, this._white);
-            mesh.count = 0;
-            mesh.frustumCulled = false;
-            const terrain = name === 'ground' || name === 'river';
-            mesh.castShadow = !terrain;
-            mesh.receiveShadow = terrain;
-            mesh.userData.type = name;
-            this.meshes[name] = mesh;
-            this.cellOf[code] = new Int32Array(totals[code]);
-            APP.scene.add(mesh);
             const lbl = document.getElementById('count-' + name);
             if (lbl) lbl.textContent = totals[code].toLocaleString();
+            if (!totals[code] || !materials[name]) return;
+            expTotal += exposed[code];
+            const cap = Math.ceil(exposed[code] * 1.1) + 1024;     // only what is visible (+ headroom for fire)
+            const mesh = this._makeMesh(name, code, cap);
+            this.meshes[name] = mesh;
+            this.cellOf[code] = new Int32Array(cap);
+            APP.scene.add(mesh);
         });
+        this.instOf = new IntMap(expTotal + 1024);
 
+        // pass 2: place exposed voxels
         let drawn = 0;
         for (let lx = 0; lx < g.nx; lx++) for (let lz = 0; lz < g.nz; lz++) {
             const base = (lx * g.nz + lz) * g.ny;
@@ -141,21 +199,19 @@ class VoxelLayers {
         }
         Object.values(this.meshes).forEach(m => { m.instanceMatrix.needsUpdate = true; m.instanceColor.needsUpdate = true; });
         this.drawn = drawn;
-        Object.keys(this.meshes).forEach(t => {
-            const cb = document.getElementById('visibility-' + t);
-            if (cb) this.meshes[t].visible = cb.checked;
-        });
         APP.shadowDirty = true;
         document.dispatchEvent(new CustomEvent('layers-built'));
     }
 
     addInstance(i, lx, ly, lz) {
-        const g = this.grid, code = g.data[i], mesh = this.meshes[g.typeName(code)];
-        if (!mesh || this.instOf[i] >= 0) return;
+        const g = this.grid, code = g.data[i];
+        let mesh = this.meshes[g.typeName(code)];
+        if (!mesh || this.instOf.get(i) >= 0) return;
+        if (mesh.count >= mesh.instanceMatrix.count) mesh = this._grow(code);
         if (lx === undefined) [lx, ly, lz] = g.unpack(i);
         const k = mesh.count++;
         this.cellOf[code][k] = i;
-        this.instOf[i] = k;
+        this.instOf.set(i, k);
         this._m.makeTranslation(g.worldX(lx), g.worldY(ly), g.worldZ(lz));
         mesh.setMatrixAt(k, this._m);
         const fireTint = APP.fire && APP.fire.tintOf ? APP.fire.tintOf(i) : null;
@@ -166,27 +222,27 @@ class VoxelLayers {
 
     /** voxel consumed (e.g. burnt tree): hide it and reveal hidden neighbours */
     remove(i) {
-        const g = this.grid; if (this.removed[i]) return;
-        this.removed[i] = 1;
-        const k = this.instOf[i], mesh = this.meshes[g.typeName(g.data[i])];
+        const g = this.grid; if (this.isRemoved(i)) return;
+        this.removedBits[i >> 3] |= 1 << (i & 7);
+        const k = this.instOf.get(i), mesh = this.meshes[g.typeName(g.data[i])];
         if (k >= 0 && mesh) { mesh.setMatrixAt(k, this._zero); mesh.instanceMatrix.needsUpdate = true; }
         const [lx, ly, lz] = g.unpack(i);
+        this.dirtyCols.push(lx * g.nz + lz);
         [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]].forEach(([dx, dy, dz]) => {
             const x = lx + dx, y = ly + dy, z = lz + dz;
             if (!g.inside(x, y, z)) return;
             const n = g.idx(x, y, z);
-            if (g.data[n] && !this.removed[n] && this.instOf[n] < 0) this.addInstance(n, x, y, z);
+            if (g.data[n] && !this.isRemoved(n) && this.instOf.get(n) < 0) this.addInstance(n, x, y, z);
         });
         APP.shadowDirty = true;
     }
 
     tint(i, color) {
-        const k = this.instOf[i], mesh = this.meshes[this.grid.typeName(this.grid.data[i])];
+        const k = this.instOf.get(i), mesh = this.meshes[this.grid.typeName(this.grid.data[i])];
         if (k < 0 || !mesh) return;
         mesh.setColorAt(k, color); mesh.instanceColor.needsUpdate = true;
     }
 
-    occupied(i) { return this.grid.data[i] !== 0 && !this.removed[i]; }
     visibleType(code) { const m = this.meshes[this.grid.typeName(code)]; return m && m.visible; }
 }
 APP.VoxelLayers = VoxelLayers;
@@ -195,7 +251,9 @@ APP.VoxelLayers = VoxelLayers;
 // 4. Load data
 // --------------------------------------------------------------------
 const loadingEl = document.getElementById('loading');
-VoxelGrid.load().then(grid => {
+function countVoxels(g) { let n = 0; const d = g.data; for (let i = 0; i < d.length; i++) if (d[i]) n++; return n; }
+loadingEl.textContent = `Loading ${CONFIG.DATASETS[CONFIG.RES].label} voxel data…`;
+VoxelGrid.load(t => loadingEl.textContent = t).then(grid => {
     APP.grid = grid;
     APP.layers = new VoxelLayers(grid);
 
@@ -241,22 +299,26 @@ VoxelGrid.load().then(grid => {
     camera.position.set(b.cx + b.width * 0.5 * zoomOut, b.minY + b.width * 0.3 * zoomOut, b.cz + b.width * 0.5 * zoomOut);
     controls.update();
 
-    updateSunPosition(parseInt(timeSlider.value));
     document.getElementById('stat-voxels').textContent =
-        `${grid.data.reduce((a, c) => a + (c ? 1 : 0), 0).toLocaleString()} voxels · ${APP.layers.drawn.toLocaleString()} drawn (hidden interior culled)`;
+        `${CONFIG.VOXEL_SIZE} m grid · ${countVoxels(grid).toLocaleString()} voxels · ${APP.layers.drawn.toLocaleString()} drawn (hidden interior culled)`;
 
     loadingEl.style.display = 'none';
     document.dispatchEvent(new CustomEvent('voxels-ready', { detail: grid }));
 }).catch(err => {
     console.error(err);
-    loadingEl.innerText = 'Failed to load voxel data.';
+    loadingEl.innerHTML = `Could not load <b>${CONFIG.DATA_URL}</b><br><small>${err.message}</small>` +
+        (CONFIG.RES !== CONFIG.DEFAULT_RES ? `<br><br>Make it with <code>tools/compress_voxels.py</code> and upload it next to index.html.<br><a href="?res=${CONFIG.DEFAULT_RES}">Back to the 2 m grid</a>` : '');
 });
 
 // --------------------------------------------------------------------
 // 5. Layer / colour interaction
 // --------------------------------------------------------------------
 window.updateColor = function (type, hex) {
-    if (type === 'background') { scene.background.set(hex); scene.fog.color.set(hex); }
+    if (type === 'background') {
+        // a custom colour pins the sky; "Default" hands it back to the day/night cycle
+        APP.userSky = hex.toLowerCase() === CONFIG.COLORS.background.toLowerCase() ? null : hex;
+        if (APP.sky) APP.sky.apply(); else { scene.background.set(hex); scene.fog.color.set(hex); }
+    }
     else if (materials[type]) materials[type].color.set(hex);
 };
 window.resetColor = function (type) {
@@ -275,45 +337,7 @@ window.toggleAllLayers = function (show) {
     });
 };
 
-// --------------------------------------------------------------------
-// 6. Sun / time of day
-// --------------------------------------------------------------------
-const timeSlider = document.getElementById('time-slider');
-const playBtn = document.getElementById('play-btn');
-const timeLabel = document.getElementById('current-time-label');
-let isPlaying = false, playInterval = null;
-
-function updateSunPosition(hour) {
-    timeLabel.innerText = `${String(hour).padStart(2, '0')}:00`;
-    const angle = ((hour - 6) / 12) * Math.PI;
-    const R = 1500, c = APP.bounds || { cx: 0, cz: 0, minY: 0 };
-    // 06:00 → +X (East), 18:00 → -X (West); slight tilt to the North (-Z) for Yogyakarta
-    sun.position.set(c.cx + Math.cos(angle) * R, c.minY + Math.max(Math.sin(angle) * R, 10), c.cz - 500);
-    const k = Math.sin(angle);
-    sun.intensity = k * 0.8 + 0.2;
-    ambient.intensity = k * 0.4 + 0.3;
-    const bg = '#' + scene.background.getHexString();
-    if (bg === '#ffffff' || bg === '#ffa07a' || bg === '#87ceeb') {
-        const col = (hour <= 7 || hour >= 17) ? '#FFA07A' : '#ffffff';
-        scene.background.set(col); scene.fog.color.set(col);
-    }
-    APP.shadowDirty = true;
-}
-APP.updateSunPosition = updateSunPosition;
-
-timeSlider.addEventListener('input', e => { if (isPlaying) stopLoop(); updateSunPosition(parseInt(e.target.value)); });
-function startLoop() {
-    isPlaying = true; playBtn.innerText = 'Pause'; playBtn.style.backgroundColor = '#ef4444';
-    playInterval = setInterval(() => {
-        let h = parseInt(timeSlider.value) + 1; if (h > 18) h = 6;
-        timeSlider.value = h; updateSunPosition(h);
-    }, 800);
-}
-function stopLoop() {
-    isPlaying = false; playBtn.innerText = 'Play'; playBtn.style.backgroundColor = '#3b82f6';
-    clearInterval(playInterval);
-}
-playBtn.addEventListener('click', () => isPlaying ? stopLoop() : startLoop());
+// 6. Sun / time of day → js/sky.js
 
 // --------------------------------------------------------------------
 // 7. Flood

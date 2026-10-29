@@ -29,9 +29,6 @@
         $('wind-beaufort').textContent = BEAUFORT.find(b => W.speed < b[0])[1];
         $('wind-live-btn').classList.toggle('active', W.source === 'live');
         $('wind-manual-btn').classList.toggle('active', W.source === 'manual');
-        const arrow = $('wind-arrow');
-        arrow.style.transform = `translate(-50%,-50%) rotate(${W.dirFrom + 180}deg)`;
-        arrow.style.opacity = W.speed < 0.2 ? 0 : 1;
         const meta = [];
         if (W.gust != null) meta.push(`Gust ${W.gust.toFixed(1)} m/s`);
         if (W.temp != null) meta.push(`${W.temp.toFixed(1)} °C`);
@@ -43,29 +40,21 @@
 
     function setStatus(txt, cls) { const s = $('wind-status'); s.textContent = txt; s.className = 'status ' + (cls || ''); }
 
-    async function fetchLive() {
-        const { lat, lon } = CONFIG.GEOREF;
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
-            `&current=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m` +
-            `&wind_speed_unit=ms&timezone=auto`;
-        setStatus('Fetching live wind…');
-        try {
-            const res = await fetch(url);
-            if (!res.ok) throw new Error('HTTP ' + res.status);
-            const j = await res.json(), c = j.current;
-            W.time = c.time;
-            W.gust = c.wind_gusts_10m; W.temp = c.temperature_2m; W.rh = c.relative_humidity_2m;
-            if (W.liveWanted) {
-                W.speed = c.wind_speed_10m; W.dirFrom = c.wind_direction_10m; W.source = 'live';
-            }
-            setStatus(`Live · Open-Meteo · obs. ${c.time.replace('T', ' ')} (local)`, 'ok');
-            if (W.rh != null) document.dispatchEvent(new CustomEvent('humidity-live', { detail: W.rh }));
-        } catch (e) {
-            console.warn('Live wind failed', e);
-            W.source = 'manual';
-            setStatus('Live wind unavailable — using manual values', 'warn');
-        }
+    // live values come from weather.js (one Open-Meteo call for weather + wind)
+    function applyLive(c) {
+        W.time = c.time;
+        W.gust = c.wind_gusts_10m; W.temp = c.temperature_2m; W.rh = c.relative_humidity_2m;
+        if (W.liveWanted) { W.speed = c.wind_speed_10m; W.dirFrom = c.wind_direction_10m; W.source = 'live'; }
+        setStatus(W.source === 'live' ? `Live · Open-Meteo · obs. ${c.time.replace('T', ' ')} WIB` : 'Manual wind', W.source === 'live' ? 'ok' : '');
+        if (W.rh != null) document.dispatchEvent(new CustomEvent('humidity-live', { detail: W.rh }));
         refreshUI();
+    }
+    document.addEventListener('weather-data', e => applyLive(e.detail));
+    function fetchLive() {
+        const c = APP.weather && APP.weather.current;
+        if (c) applyLive(c);
+        else setStatus('Waiting for live data…');
+        if (APP.weather) APP.weather.refresh();
     }
     W.fetchLive = fetchLive;
 
@@ -82,9 +71,8 @@
     dirEl.addEventListener('input', manual);
     $('wind-show').addEventListener('change', e => { W.showParticles = e.target.checked; if (lines) lines.visible = e.target.checked; });
 
-    setInterval(() => { if (W.liveWanted) fetchLive(); }, CONFIG.WIND.refreshMinutes * 60000);
     refreshUI();
-    fetchLive();
+    setStatus('Waiting for live data…');
 
     // =================================================================
     //  Particle streaks — advect with a log wind profile, lift over obstacles

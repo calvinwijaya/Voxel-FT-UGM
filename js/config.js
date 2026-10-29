@@ -2,11 +2,13 @@
 //  CONFIG — everything you may want to tune lives here
 // =====================================================================
 window.CONFIG = {
-    VOXEL_SIZE: 2,                       // metres per voxel (render units = metres)
-
-    // Data: binary first (≈50 KB), JSON as fallback for old browsers
-    DATA_URL: 'environment_blocks.vxl.gz',
-    JSON_FALLBACK_URL: 'environment_blocks.json',
+    // ---- Grid resolutions ----
+    // Each entry is one compressed file made with tools/compress_voxels.py.
+    // The page loads the one chosen with the "Grid size" buttons (stored in the URL, e.g. ?res=1m).
+    DATASETS: {
+        '2m':  { label: '2 m',   size: 2,   url: 'environment_blocks.vxl.gz',     json: 'environment_blocks.json' },
+    },
+    DEFAULT_RES: '2m',
 
     // Scene orientation used everywhere (sun, compass, wind, basemap):
     //   +X = East,  -Z = North,  +Y = Up
@@ -31,6 +33,29 @@ window.CONFIG = {
         ground: 'Ground Terrain', river: 'River Area', tree_low: 'Low Vegetation',
         tree_high: 'High Vegetation', building: 'Building Wall', building_roof: 'Building Roof'
     },
+
+    // ---- Walk modes ----
+    PLAYER: {
+        spawn: { lat: -7.7656513224346515, lon: 110.37309213763143, headingDeg: 270 },   // heading: 0 = north, 90 = east, null = face the campus centre
+        fpEyeHeight: 1.6,        // human eye height in first person (m)
+        jumpHeight: 2.8          // m — clears a 2 m voxel with margin
+    },
+
+    // ---- Sky / time ----
+    TIMEZONE_OFFSET_H: 7,        // WIB (UTC+7), Yogyakarta has no daylight saving
+    SKY: { day: '#e6f0fa', golden: '#ffb58a', twilight: '#3b4372', night: '#070b1f', overcast: '#9aa3ad' },
+
+    // ---- Weather & air quality (Open-Meteo, free, no key) ----
+    WEATHER: {
+        refreshMinutes: 15,
+        forecastURL: 'https://api.open-meteo.com/v1/forecast',
+        airURL: 'https://air-quality-api.open-meteo.com/v1/air-quality',
+        // Optional: a free WAQI token (https://aqicn.org/data-platform/token/) adds the nearest
+        // monitoring-station reading next to the model estimate. Leave '' to skip.
+        waqiToken: '',
+        rainDrops: 7000
+    },
+
 
     // ---- Fire model (cellular automaton, Alexandridis et al. 2008 style) ----
     FIRE: {
@@ -69,3 +94,15 @@ window.CONFIG = {
     BASEMAP_ZOOM: 17,
     BASEMAP_EXTENT: 3.0           // basemap plane size relative to the voxel area
 };
+
+// ---- pick the dataset (before any other script reads VOXEL_SIZE) ----
+(function () {
+    const C = window.CONFIG;
+    let res = new URLSearchParams(location.search).get('res') || C.DEFAULT_RES;
+    if (!C.DATASETS[res]) res = C.DEFAULT_RES;
+    const d = C.DATASETS[res];
+    C.RES = res;
+    C.VOXEL_SIZE = d.size;                 // metres per voxel (render units = metres)
+    C.DATA_URL = d.url;
+    C.JSON_FALLBACK_URL = d.json || null;  // the 1 m / 0.5 m JSON files are far too big to load in a browser
+})();

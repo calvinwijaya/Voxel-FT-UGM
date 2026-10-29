@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#18181b"/>
+  <!-- ground slab -->
+  <path d="M32 40 L58 52 L32 63 L6 52 Z" fill="#8D6E63"/>
+  <!-- building: two voxels tall, red roof -->
+  <path d="M20 22 L36 31 L36 52 L20 43 Z" fill="#E0E0E0"/>
+  <path d="M36 31 L52 22 L52 43 L36 52 Z" fill="#A1A1AA"/>
+  <path d="M36 13 L52 22 L36 31 L20 22 Z" fill="#E53935"/>
+  <path d="M20 32.5 L36 41.5 M36 41.5 L52 32.5" stroke="#71717a" stroke-width="1.2" opacity=".55"/>
+  <!-- tree voxel in front -->
+  <path d="M8 42 L17 47 L17 57 L8 52 Z" fill="#43A047"/>
+  <path d="M17 47 L26 42 L26 52 L17 57 Z" fill="#2E7D32"/>
+  <path d="M17 37 L26 42 L17 47 L8 42 Z" fill="#8BC34A"/>
+</svg>

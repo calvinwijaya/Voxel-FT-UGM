@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Voxel Visualization FT UGM</title>
+    <link rel="icon" href="favicon.ico" sizes="any">
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <meta name="theme-color" content="#18181b">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -24,58 +28,60 @@
                     <button id="view-tp">Third person</button>
                 </div>
                 <div class="hint touch-only">
-                    Walkers spawn on open ground at the centre of the current view.<br>
+                    You start at the fixed spawn point. In third person you play an orange tabby cat that grows wings in fly mode.<br>
                     <b>Left thumb</b>: joystick (push to the edge to run) · <b>Right thumb</b>: drag to look ·
-                    <b>Pinch</b>: zoom the 3rd-person camera. Landscape orientation works best.
+                    <b>Pinch</b>: zoom the cat camera. Landscape orientation works best.
                 </div>
                 <div class="hint desktop-only">
-                    Walkers spawn on open ground at the centre of the current orbit view.<br>
+                    You start at the fixed spawn point. In third person you play an orange tabby cat that grows wings in fly mode.<br>
                     <kbd>W A S D</kbd> move · <kbd>Mouse</kbd> look · <kbd>Space</kbd> jump · <kbd>Shift</kbd> run ·
                     <kbd>G</kbd> fly · <kbd>V</kbd> switch 1st/3rd · <kbd>F</kbd> ignite at crosshair ·
-                    <kbd>R</kbd> respawn · <kbd>Esc</kbd> release mouse, <kbd>Esc</kbd> again = orbit
+                    <kbd>R</kbd> respawn · <kbd>Wheel</kbd> cat camera distance · <kbd>Esc</kbd> release mouse, <kbd>Esc</kbd> again = orbit
                 </div>
             </details>
 
-            <!-- ============ LAYERS ============ -->
+            <!-- ============ TIME ============ -->
             <details class="section" open>
-                <summary>Legend &amp; Layers</summary>
-                <div class="row-end">
-                    <button class="btn-default" onclick="toggleAllLayers(true)">Show All</button>
-                    <button class="btn-default" onclick="toggleAllLayers(false)">Hide All</button>
+                <summary>Time &amp; Sun</summary>
+                <div class="seg">
+                    <button id="time-live" class="active">● Live (now)</button>
+                    <button id="play-btn">Play</button>
                 </div>
-                <div id="controls-container"></div>
-                <div class="legend-item" style="background: transparent;">
-                    <input type="color" id="color-background" value="#FFFFFF" onchange="updateColor('background', this.value)">
-                    <label for="color-background">Sky Background</label>
-                    <button class="btn-default" onclick="resetColor('background')">Default</button>
+                <div class="slider-row" style="margin-top:10px">
+                    <span>00:00</span>
+                    <input type="range" id="time-slider" min="0" max="1439" step="5" value="720" style="accent-color: #fbbf24;">
+                    <span>23:59</span>
                 </div>
+                <div id="current-time-label" class="center-label" style="color:#fbbf24">--:--</div>
+                <label class="field">Date</label>
+                <input type="date" id="date-input">
+                <div class="hint">Live follows the real clock in Yogyakarta (WIB), so a visit at night shows night. Moving the slider or date switches to simulation (shadow analysis for any day).</div>
             </details>
 
-            <!-- ============ SUN & FLOOD ============ -->
-            <details class="section">
-                <summary>Sun &amp; Flood</summary>
+            <!-- ============ WEATHER & AIR ============ -->
+            <details class="section" id="sec-weather" open>
+                <summary>Weather &amp; Air Quality</summary>
                 <div class="row-between">
-                    <h4>Time of Day (Shadow Analysis)</h4>
-                    <button id="play-btn" class="btn-default" style="background-color: #3b82f6;">Play</button>
+                    <div id="wx-status" class="status">—</div>
+                    <button id="wx-refresh" class="btn-default" title="Refresh now">⟳</button>
                 </div>
-                <div class="slider-row">
-                    <span>06:00</span>
-                    <input type="range" id="time-slider" min="6" max="18" step="1" value="12" style="accent-color: #fbbf24;">
-                    <span>18:00</span>
-                </div>
-                <div id="current-time-label" class="center-label" style="color:#fbbf24">12:00</div>
-
-                <h4 style="margin-top:18px; color:#3b82f6">Flood Simulation</h4>
-                <div class="slider-row">
-                    <span>Base</span>
-                    <input type="range" id="flood-slider" min="0" max="30" step="1" value="0" style="accent-color: #3b82f6;">
-                    <span id="flood-label" class="value">0 m</span>
-                </div>
-                <div class="hint">Rise of water above the lowest river voxel. Flooded voxels cannot burn.</div>
+                <div id="wx-now" class="wx-card"></div>
+                <div id="wx-hours" class="wx-hours"></div>
+                <label class="field">Scene weather</label>
+                <select id="wx-mode">
+                    <option value="auto">Live (follow real weather)</option>
+                    <option value="clear">Clear</option>
+                    <option value="cloudy">Cloudy</option>
+                    <option value="rain">Rain</option>
+                    <option value="storm">Thunderstorm</option>
+                </select>
+                <h4 style="margin-top:16px">Air quality</h4>
+                <div id="aq-now" class="wx-card"></div>
+                <div id="aq-station" class="subtle"></div>
             </details>
 
             <!-- ============ WIND ============ -->
-            <details class="section" open>
+            <details class="section">
                 <summary>Wind</summary>
                 <div class="seg">
                     <button id="wind-live-btn">Live data</button>
@@ -95,7 +101,7 @@
             </details>
 
             <!-- ============ FIRE ============ -->
-            <details class="section" open>
+            <details class="section">
                 <summary>Fire Spread</summary>
                 <button id="fire-arm" class="btn-wide">Place ignition point</button>
                 <div class="seg" style="margin-top:8px">
@@ -110,7 +116,34 @@
                 <label class="field">Building flammability <b id="fire-bldg-label"></b></label>
                 <input type="range" id="fire-bldg" min="0" max="300" step="5" value="100" style="accent-color:#f97316">
                 <div id="fire-stats" class="stats"></div>
-                <div class="hint">Spread uses the current wind (live or manual). Humidity follows live data until you move the slider. Embers jump downwind above 5 m/s.</div>
+                <div class="hint">Spread uses the current wind (live or manual). Humidity follows live data until you move the slider. Rain slows the fire. Embers jump downwind above 5 m/s.</div>
+            </details>
+
+            <!-- ============ FLOOD ============ -->
+            <details class="section">
+                <summary>Flood</summary>
+                <div class="slider-row">
+                    <span>Base</span>
+                    <input type="range" id="flood-slider" min="0" max="30" step="1" value="0" style="accent-color: #3b82f6;">
+                    <span id="flood-label" class="value">0 m</span>
+                </div>
+                <div class="hint">Rise of water above the lowest river voxel. Flooded voxels cannot burn.</div>
+            </details>
+
+            <!-- ============ LAYERS ============ -->
+            <details class="section">
+                <summary>Legend &amp; Layers</summary>
+                <div class="row-end">
+                    <button class="btn-default" onclick="toggleAllLayers(true)">Show All</button>
+                    <button class="btn-default" onclick="toggleAllLayers(false)">Hide All</button>
+                </div>
+                <div id="controls-container"></div>
+                <div class="legend-item" style="background: transparent;">
+                    <input type="color" id="color-background" value="#FFFFFF" onchange="updateColor('background', this.value)">
+                    <label for="color-background">Sky colour (pins it)</label>
+                    <button class="btn-default" onclick="resetColor('background')">Auto</button>
+                </div>
+                <div class="hint">Hidden layers can be walked through in first/third person.</div>
             </details>
 
             <!-- ============ BASEMAP ============ -->
@@ -128,23 +161,13 @@
                     <input type="checkbox" id="basemap-ground">
                     <label for="basemap-ground">Colour ground voxels from imagery</label>
                 </div>
-                <h4 style="margin-top:12px">Align to map</h4>
-                <label class="field">Shift East <b id="geo-e-label"></b></label>
-                <input type="range" id="geo-e" min="-300" max="300" step="1">
-                <label class="field">Shift North <b id="geo-n-label"></b></label>
-                <input type="range" id="geo-n" min="-300" max="300" step="1">
-                <label class="field">Rotation <b id="geo-rot-label"></b></label>
-                <input type="range" id="geo-rot" min="-45" max="45" step="0.5">
-                <div class="legend-item" style="margin-top:6px">
-                    <input type="checkbox" id="geo-flip"><label for="geo-flip">Flip Z (grid z grows northwards)</label>
-                </div>
-                <button id="geo-copy" class="btn-default">Copy georef</button>
+                <div class="hint">The map surface follows the LiDAR terrain under the model and continues it smoothly outside, so there is no gap.</div>
             </details>
 
             <div class="metadata">
                 <p><strong>Metadata:</strong><br>
                 The data were derived from aerial LiDAR acquisition (UAV LiDAR) and photogrammetric processing of the Faculty of Engineering, Universitas Gadjah Mada. The height of each building was extracted from a normalized Digital Surface Model (nDSM) or Object Height Model (OHM). Building outlines were manually digitized from orthophotos.</p>
-                <p><strong>Wind data:</strong> <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0).</p>
+                <p><strong>Live data:</strong> weather, wind &amp; air quality from <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0; air quality from CAMS / Copernicus).</p>
                 <p style="margin-top: 15px;"><strong>Authors:</strong><br>Calvin Wijaya, Trias Aditya, Ruli Andaru</p>
                 <p><strong>Contact:</strong><br><a href="mailto:calvin.wijaya@ugm.ac.id">calvin.wijaya@ugm.ac.id</a></p>
             </div>
@@ -152,7 +175,19 @@
         <button id="toggle-btn" onclick="toggleSidebar()">❮</button>
     </div>
 
-    <div id="compass">N<div id="wind-arrow" title="Wind blows this way"></div></div>
+    <div id="compass">N</div>
+
+    <!-- minimap (first / third person) -->
+    <div id="minimap">
+        <canvas id="minimap-canvas" width="360" height="360"></canvas>
+        <button id="mm-in" title="Zoom in">+</button>
+        <button id="mm-out" title="Zoom out">−</button>
+    </div>
+
+    <!-- weather / time / air chip -->
+    <button id="wx-chip" title="Weather & air quality">
+        <span id="chip-time">--:--</span><span id="chip-wx"></span><span id="chip-aq"></span>
+    </button>
 
     <!-- HUD for walk modes -->
     <div id="crosshair"></div>
@@ -183,10 +218,15 @@
     <script src="js/config.js"></script>
     <script src="js/voxel-grid.js"></script>
     <script src="js/main.js"></script>
+    <script src="js/geo.js"></script>
+    <script src="js/weather.js"></script>
+    <script src="js/sky.js"></script>
     <script src="js/wind.js"></script>
+    <script src="js/rain.js"></script>
     <script src="js/fire.js"></script>
     <script src="js/player.js"></script>
     <script src="js/basemap.js"></script>
     <script src="js/touch.js"></script>
+    <script src="js/minimap.js"></script>
 </body>
 </html>

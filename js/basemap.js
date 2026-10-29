@@ -9,17 +9,7 @@
     let plane = null, canvas = null, ctx = null, view = null, current = 'satellite', colorGround = false, buildToken = 0;
     const G = CONFIG.GEOREF;
 
-    // ---------- geo helpers (local tangent plane; fine for < ~5 km) ----------
-    function worldToLL(wx, wz) {
-        const b = APP.bounds, r = G.rotationDeg * Math.PI / 180;
-        const e = wx - b.cx; let n = -(wz - b.cz); if (G.flipZ) n = -n;
-        const E = e * Math.cos(r) + n * Math.sin(r) + G.offsetE;
-        const N = -e * Math.sin(r) + n * Math.cos(r) + G.offsetN;
-        const lat = G.lat + N / 111320;
-        const lon = G.lon + E / (111320 * Math.cos(G.lat * Math.PI / 180));
-        return [lat, lon];
-    }
-    APP.worldToLL = worldToLL;
+    const worldToLL = (x, z) => APP.worldToLL(x, z);     // js/geo.js
     const mercX = (lon, z) => (lon + 180) / 360 * 256 * Math.pow(2, z);
     const mercY = (lat, z) => { const s = Math.sin(lat * Math.PI / 180); return (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * 256 * Math.pow(2, z); };
 
@@ -27,7 +17,7 @@
         const token = ++buildToken;
         const src = CONFIG.BASEMAPS[current];
         $('attribution').textContent = src ? src.attribution : '';
-        if (!src) { if (plane) plane.visible = false; applyGroundColors(); return; }
+        if (!src) { if (plane) plane.visible = false; APP.basemap = null; document.dispatchEvent(new CustomEvent('basemap-ready')); applyGroundColors(); return; }
 
         const b = APP.bounds, size = Math.max(b.width, b.depth) * CONFIG.BASEMAP_EXTENT;
         const half = size / 2;
@@ -64,23 +54,85 @@
 
         // plane with per-vertex UVs computed through the geo transform (handles rotation exactly)
         if (plane) { APP.scene.remove(plane); plane.geometry.dispose(); plane.material.map.dispose(); plane.material.dispose(); }
-        const geo = new THREE.PlaneGeometry(size, size, 48, 48);
+        const SEG = APP.isTouch ? 110 : 160;
+        const geo = new THREE.PlaneGeometry(size, size, SEG, SEG);
         const pos = geo.attributes.position, uv = geo.attributes.uv;
+        const heights = terrainHeights(SEG, size);
         for (let k = 0; k < pos.count; k++) {
             const wx = b.cx + pos.getX(k), wz = b.cz - pos.getY(k);   // rotation.x = -90°
             const [lat, lon] = worldToLL(wx, wz);
             uv.setXY(k, (mercX(lon, z) - view.ox) / view.w, 1 - (mercY(lat, z) - view.oy) / view.h);
+            pos.setZ(k, heights[k]);                                  // local +Z = world up
         }
-        uv.needsUpdate = true;
+        uv.needsUpdate = true; pos.needsUpdate = true;
+        geo.computeVertexNormals();
         const tex = new THREE.CanvasTexture(canvas);
         tex.anisotropy = APP.renderer.capabilities.getMaxAnisotropy();
         plane = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: tex }));
         plane.rotation.x = -Math.PI / 2;
-        plane.position.set(b.cx, APP.minGroundTop - VS / 2, b.cz);
+        plane.position.set(b.cx, 0, b.cz);
         plane.receiveShadow = true;
         APP.scene.add(plane);
         APP.shadowDirty = true;
+        APP.basemap = { canvas, view, mercX, mercY };
+        document.dispatchEvent(new CustomEvent('basemap-ready'));
         applyGroundColors();
+    }
+
+    /**
+     * Heights for the basemap mesh so it hugs the LiDAR terrain instead of floating flat:
+     *  • under the voxels: lowest voxel bottom of the surrounding columns (min-pooled, so the
+     *    surface always stays just below the voxels and never pokes through them)
+     *  • outside: harmonic in-painting (nearest value + smoothing) continuing the terrain edge
+     */
+    function terrainHeights(SEG, size) {
+        const grid = APP.grid, b = APP.bounds, n = SEG + 1, step = size / SEG;
+        // lowest occupied voxel per column
+        const bottom = new Float32Array(grid.nx * grid.nz).fill(NaN);
+        for (let lx = 0; lx < grid.nx; lx++) for (let lz = 0; lz < grid.nz; lz++) {
+            const base = (lx * grid.nz + lz) * grid.ny;
+            for (let ly = 0; ly < grid.ny; ly++) if (grid.data[base + ly]) { bottom[lx * grid.nz + lz] = grid.worldY(ly) - VS / 2; break; }
+        }
+        const win = Math.ceil(step / VS);
+        const h = new Float32Array(n * n), known = new Uint8Array(n * n);
+        for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+            // PlaneGeometry vertex order: rows from +Y (north, -Z) to -Y, columns from -X to +X
+            const wx = b.cx - size / 2 + c * step, wz = b.cz - size / 2 + r * step;
+            const cx = grid.cellX(wx), cz = grid.cellZ(wz);
+            let m = Infinity;
+            for (let dx = -win; dx <= win; dx++) for (let dz = -win; dz <= win; dz++) {
+                const x = cx + dx, z = cz + dz;
+                if (x < 0 || z < 0 || x >= grid.nx || z >= grid.nz) continue;
+                const v = bottom[x * grid.nz + z]; if (v < m) m = v;
+            }
+            if (m < Infinity) { h[r * n + c] = m - 0.15; known[r * n + c] = 1; }
+        }
+        // nearest known value (BFS) …
+        const queue = []; for (let k = 0; k < n * n; k++) if (known[k]) queue.push(k);
+        const seen = known.slice();
+        for (let q = 0; q < queue.length; q++) {
+            const k = queue[q], r = (k / n) | 0, c = k % n;
+            [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dr, dc]) => {
+                const rr = r + dr, cc = c + dc; if (rr < 0 || cc < 0 || rr >= n || cc >= n) return;
+                const kk = rr * n + cc; if (seen[kk]) return;
+                seen[kk] = 1; h[kk] = h[k]; queue.push(kk);
+            });
+        }
+        if (!queue.length) h.fill(APP.minGroundTop - VS);
+        // … then smooth the in-painted part (known cells stay fixed)
+        const tmp = new Float32Array(n * n);
+        for (let it = 0; it < 80; it++) {
+            for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+                const k = r * n + c;
+                if (known[k]) { tmp[k] = h[k]; continue; }
+                let s = 0, w = 0;
+                if (r > 0) { s += h[k - n]; w++; } if (r < n - 1) { s += h[k + n]; w++; }
+                if (c > 0) { s += h[k - 1]; w++; } if (c < n - 1) { s += h[k + 1]; w++; }
+                tmp[k] = s / w;
+            }
+            h.set(tmp);
+        }
+        return h;
     }
 
     /** paint terrain voxels with the imagery colour under them */
@@ -109,29 +161,8 @@
     }
 
     // ---------- UI ----------
-    let deb;
-    const rebuildSoon = () => { clearTimeout(deb); deb = setTimeout(build, 250); };
     $('basemap-select').onchange = e => { current = e.target.value; build(); };
     $('basemap-ground').onchange = e => { colorGround = e.target.checked; applyGroundColors(); };
-    const bindGeo = (id, key, fmt) => {
-        const el = $(id); el.value = G[key];
-        const lab = $(id + '-label');
-        const sync = () => lab && (lab.textContent = fmt(G[key]));
-        sync();
-        el.addEventListener('input', () => { G[key] = parseFloat(el.value); sync(); rebuildSoon(); });
-    };
-    bindGeo('geo-e', 'offsetE', v => `${v} m`);
-    bindGeo('geo-n', 'offsetN', v => `${v} m`);
-    bindGeo('geo-rot', 'rotationDeg', v => `${v}°`);
-    $('geo-flip').checked = G.flipZ;
-    $('geo-flip').onchange = e => { G.flipZ = e.target.checked; rebuildSoon(); };
-    $('geo-copy').onclick = () => {
-        const txt = 'GEOREF: ' + JSON.stringify(G, null, 4);
-        (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(
-            () => APP.flash('Georef copied — paste into js/config.js'),
-            () => { console.log(txt); APP.flash('Georef printed to the console'); });
-    };
-
     document.addEventListener('voxels-ready', () => { $('basemap-select').value = current; build(); });
     document.addEventListener('layers-built', () => { if (colorGround) applyGroundColors(); });
     const groundPicker = document.getElementById('color-ground');

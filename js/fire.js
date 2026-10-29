@@ -11,7 +11,7 @@
     const C = CONFIG.FIRE, VS = CONFIG.VOXEL_SIZE;
     const $ = id => document.getElementById(id);
 
-    let grid, layers, state, timer, burning = [], burntCol, burntArea = 0;
+    let grid, layers, fs, burning = [], burntCol, burntArea = 0;
     let flam, burnSteps, consumed, burntByType, flames, smoke, hover;
     const OFFS = [];
     for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
@@ -59,7 +59,7 @@
     // ---------------- init ----------------
     document.addEventListener('voxels-ready', () => {
         grid = APP.grid; layers = APP.layers;
-        state = new Uint8Array(grid.N); timer = new Uint8Array(grid.N);
+        fs = new Map();      // cell -> remaining burn steps (>0 burning, 0 burnt); sparse, so 0.5 m grids fit in memory
         burntCol = new Uint8Array(grid.nx * grid.nz);
         rebuildTables();
 
@@ -111,15 +111,15 @@
         burntByType = burntByType || new Int32Array(n);
     }
 
-    F.tintOf = i => !state ? null : state[i] === 1 ? EMBER : state[i] === 2 ? CHAR : null;
+    F.tintOf = i => { if (!fs) return null; const v = fs.get(i); return v === undefined ? null : v > 0 ? EMBER : CHAR; };
 
     const underWater = ly => grid.worldY(ly) + VS / 2 <= APP.waterLevel;
 
     function ignite(i) {
         const c = grid.data[i];
-        if (!c || state[i] || layers.removed[i] || !flam[c]) return false;
+        if (!c || fs.has(i) || layers.isRemoved(i) || !flam[c]) return false;
         if (underWater(i % grid.ny)) return false;
-        state[i] = 1; timer[i] = burnSteps[c]; burning.push(i);
+        fs.set(i, burnSteps[c]); burning.push(i);
         layers.tint(i, EMBER);
         return true;
     }
@@ -145,27 +145,29 @@
         F.steps++;
         const V = APP.wind.speed, wd = APP.wind.toDir();
         const moist = Math.max(0.15, Math.min(1.2, 1.25 - humidity / 100 * 0.9));
+        const rainK = APP.weather ? APP.weather.effect.rain : 0;            // rain damps the fire
+        const wet = 1 - 0.85 * rainK;
         const eW = Math.exp(C.windC1 * V);
-        const next = [], nx = grid.nx, ny = grid.ny, nz = grid.nz, data = grid.data, rm = layers.removed;
+        const next = [], nx = grid.nx, ny = grid.ny, nz = grid.nz, data = grid.data;
 
         for (let b = 0; b < burning.length; b++) {
             const i = burning[b];
-            if (state[i] !== 1) continue;
+            if (!(fs.get(i) > 0)) continue;
             const ly = i % ny, r = (i - ly) / ny, lz = r % nz, lx = (r - lz) / nz;
-            if (underWater(ly)) { state[i] = 0; layers.tint(i, new THREE.Color(1, 1, 1)); continue; }
+            if (underWater(ly)) { fs.delete(i); layers.tint(i, new THREE.Color(1, 1, 1)); continue; }
 
             for (let k = 0; k < OFFS.length; k++) {
                 const o = OFFS[k], x = lx + o.dx, y = ly + o.dy, z = lz + o.dz;
                 if (x < 0 || y < 0 || z < 0 || x >= nx || y >= ny || z >= nz) continue;
                 const n = (x * nz + z) * ny + y, c = data[n];
-                if (!c || state[n] || rm[n]) continue;
+                if (!c || fs.has(n) || layers.isRemoved(n)) continue;
                 const f = flam[c]; if (!f) continue;
                 let pw = 1;
                 if (o.hl) pw = eW * Math.exp(C.windC2 * V * (o.hx * wd.x + o.hz * wd.z - 1));
                 const pv = o.dy > 0 ? C.upwardFactor : (o.dy < 0 ? C.downwardFactor : 1);
-                const p = Math.min(0.95, C.baseProbability * f * moist * pw * pv / o.dist);
+                const p = Math.min(0.95, C.baseProbability * f * moist * wet * pw * pv / o.dist);
                 if (Math.random() < p && !underWater(y)) {
-                    state[n] = 1; timer[n] = burnSteps[c]; next.push(n); layers.tint(n, EMBER);
+                    fs.set(n, burnSteps[c]); next.push(n); layers.tint(n, EMBER);
                 }
             }
 
@@ -175,17 +177,18 @@
                 Math.random() < C.emberChance * (V / C.emberMinWind) * moist) {
                 const d = 3 + Math.random() * V * 0.8, lat = (Math.random() - 0.5) * d * 0.5;
                 const tx = Math.round(lx + wd.x * d - wd.z * lat), tz = Math.round(lz + wd.z * d + wd.x * lat);
-                const ty = grid.topWhere(tx, tz, (cc, idx) => !rm[idx]);
+                const ty = grid.topWhere(tx, tz, (cc, idx) => !layers.isRemoved(idx));
                 if (ty >= 0) { const t = grid.idx(tx, ty, tz); if (ignite(t)) next.push(burning.pop()); }
             }
 
-            if (--timer[i] === 0) {
-                state[i] = 2;
+            const left = fs.get(i) - 1;
+            if (left <= 0) {
+                fs.set(i, 0);
                 const c = data[i];
                 burntByType[c]++;
                 const col = lx * nz + lz; if (!burntCol[col]) { burntCol[col] = 1; burntArea += VS * VS; }
                 if (consumed[c]) layers.remove(i); else layers.tint(i, CHAR);
-            } else next.push(i);
+            } else { fs.set(i, left); next.push(i); }
         }
         burning = next;
         APP.shadowDirty = true;
@@ -195,7 +198,7 @@
     function reset() {
         if (!grid) return;
         setRunning(false);
-        state.fill(0); timer.fill(0); burntCol.fill(0); burntByType.fill(0);
+        fs.clear(); burntCol.fill(0); burntByType.fill(0);
         burning = []; burntArea = 0; F.steps = 0;
         layers.build();
         flames.count = 0;
@@ -204,6 +207,7 @@
         updateStats();
     }
     F.reset = reset;
+    F.burningCells = () => burning;
 
     // ---------------- per-frame ----------------
     let acc = 0, statT = 0, t = 0;
@@ -278,7 +282,7 @@
         return pickRay(ray.ray.origin, ray.ray.direction);
     };
     function pickRay(o, d) {
-        return grid.raycast(o, d, 4000, (i, c) => !layers.removed[i] && layers.visibleType(c) && layers.instOf[i] >= 0);
+        return grid.raycast(o, d, 4000, (i, c) => !layers.isRemoved(i) && layers.visibleType(c) && layers.instOf.get(i) >= 0);
     }
     F.pickRay = pickRay;
 

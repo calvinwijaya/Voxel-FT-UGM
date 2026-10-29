@@ -138,20 +138,6 @@ select {
     content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
     width: 6px; height: 6px; background: #a1a1aa; border-radius: 50%;
 }
-/* arrow shows where the wind blows TO */
-#wind-arrow {
-    position: absolute; left: 50%; top: 50%; width: 4px; height: 34px;
-    transform: translate(-50%, -50%); transition: transform .4s, opacity .3s;
-}
-#wind-arrow::before {
-    content: ''; position: absolute; left: 0; top: 4px; width: 4px; height: 26px;
-    background: linear-gradient(to top, rgba(56,189,248,0), #38bdf8); border-radius: 2px;
-}
-#wind-arrow::after {
-    content: ''; position: absolute; left: -4px; top: -2px;
-    border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 9px solid #38bdf8;
-}
-
 body.igniting canvas { cursor: crosshair; }
 
 #crosshair {
@@ -269,3 +255,95 @@ body.flying #touch-btns .big::after { content: ' / Up'; }
     .app-title { font-size: 15px; }
     #compass { top: 12px; right: 12px; width: 44px; height: 44px; }
 }
+
+/* =====================================================================
+   v3: weather chip, weather / air cards, public pulse
+   ===================================================================== */
+input[type="date"], select {
+    width: 100%; box-sizing: border-box; background: #27272a; color: #e4e4e7; border: 1px solid #3f3f46;
+    border-radius: 5px; padding: 6px; font-family: inherit; font-size: 12px; color-scheme: dark;
+}
+.seg button.danger, #play-btn.danger { background: #ef4444; color: #fff; }
+
+#wx-chip {
+    position: absolute; top: 33px; right: 90px; z-index: 10; display: none; gap: 10px; align-items: center;
+    background: rgba(24,24,27,.82); color: #e4e4e7; border: 1px solid #3f3f46; border-radius: 18px;
+    padding: 7px 13px; font: 600 12px/1 inherit; font-family: inherit; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,.35); backdrop-filter: blur(4px);
+}
+#wx-chip.ready { display: flex; }
+#wx-chip span:empty { display: none; }
+#chip-aq i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; }
+body.walking #wx-chip { pointer-events: none; opacity: .85; }
+
+.wx-card { background: rgba(255,255,255,.03); border-radius: 6px; padding: 10px; margin-top: 8px; }
+.wx-card:empty { display: none; }
+.wx-big, .aq-big { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.wx-ico { font-size: 34px; line-height: 1; }
+.wx-big b { display: block; font-size: 22px; color: #f8fafc; }
+.wx-big span { font-size: 12px; color: #a1a1aa; }
+.aq-big > b {
+    min-width: 54px; height: 54px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+    background: var(--c); color: #111; font-size: 22px;
+}
+.aq-big span { display: block; font-size: 11px; color: #a1a1aa; text-transform: uppercase; letter-spacing: 1px; }
+.aq-big em { font-style: normal; font-weight: 600; color: var(--c); font-size: 14px; }
+.kv { display: grid; grid-template-columns: 1fr auto; gap: 3px 10px; font-size: 12px; }
+.kv span { color: #a1a1aa; } .kv b { color: #e4e4e7; text-align: right; font-weight: 600; }
+.wx-hours { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin-top: 8px; }
+.wx-hours:empty { display: none; }
+.wx-hours div { background: rgba(255,255,255,.03); border-radius: 6px; padding: 5px 2px; text-align: center; font-size: 11px; }
+.wx-hours span { color: #a1a1aa; display: block; } .wx-hours i { font-style: normal; font-size: 16px; display: block; margin: 2px 0; }
+.wx-hours b { display: block; color: #e4e4e7; } .wx-hours em { font-style: normal; color: #38bdf8; font-size: 10px; }
+
+/* public pulse */
+.verdict { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.verdict > span { font-size: 36px; line-height: 1; }
+.verdict b { display: block; font-size: 20px; color: #f8fafc; }
+.verdict em { font-style: normal; font-size: 11px; color: #a1a1aa; }
+.sbar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: #3f3f46; }
+.sbar i { display: block; height: 100%; }
+.slegend { display: flex; justify-content: space-between; font-size: 10.5px; color: #a1a1aa; margin: 5px 0 8px; flex-wrap: wrap; gap: 4px; }
+.newsline { font-size: 11.5px; color: #a1a1aa; margin: 6px 0 10px; line-height: 1.5; }
+.newsline b { color: #e4e4e7; }
+.spark { width: 100%; height: 44px; display: block; margin-top: 6px; }
+.topics { display: flex; flex-wrap: wrap; gap: 5px; }
+.topic { font-size: 11px; background: #3f3f46; color: #e4e4e7; padding: 3px 8px; border-radius: 10px; }
+.topic b { color: #a1a1aa; font-weight: 600; margin-left: 2px; }
+.topic.pos { background: rgba(34,197,94,.22); } .topic.neg { background: rgba(239,68,68,.25); }
+.posts { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; max-height: 360px; overflow-y: auto; }
+.post { display: block; text-decoration: none; background: rgba(255,255,255,.03); border-radius: 6px; padding: 7px 9px; }
+.post:hover { background: rgba(255,255,255,.07); }
+.post .meta { font-size: 10.5px; color: #71717a; margin-bottom: 3px; }
+.post .txt { font-size: 12px; color: #d4d4d8; line-height: 1.45; }
+code { background: #3f3f46; padding: 0 4px; border-radius: 3px; font-size: 11px; }
+
+@media (max-width: 768px) {
+    #wx-chip { top: calc(14px + env(safe-area-inset-top)); right: 76px; padding: 6px 10px; font-size: 11px; gap: 7px; }
+    body.touch.walking #wx-chip { display: none; }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+    #wx-chip { top: 18px; right: 66px; }
+    body.touch.walking #wx-chip { display: none; }
+}
+
+/* =====================================================================
+   v4: minimap
+   ===================================================================== */
+#minimap {
+    display: none; position: absolute; z-index: 7; right: 22px; bottom: 22px; width: 200px; height: 200px;
+    filter: drop-shadow(0 4px 12px rgba(0,0,0,.45));
+}
+body.walking #minimap { display: block; }
+#minimap canvas { width: 100%; height: 100%; display: block; }
+#minimap button {
+    position: absolute; width: 28px; height: 28px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,.6);
+    background: rgba(24,24,27,.8); color: #fff; font-size: 17px; line-height: 1; cursor: pointer; padding: 0;
+}
+#mm-in { right: -4px; bottom: 38px; }
+#mm-out { right: -4px; bottom: 4px; }
+/* phones: top-right (bottom-right holds the jump / fly buttons); compass is redundant there */
+body.touch #minimap { top: calc(12px + env(safe-area-inset-top)); bottom: auto; right: calc(12px + env(safe-area-inset-right)); width: 128px; height: 128px; }
+body.touch #mm-in { bottom: auto; top: 96px; right: auto; left: -6px; }
+body.touch #mm-out { bottom: auto; top: 96px; right: -6px; }
+body.touch.walking #compass { display: none; }

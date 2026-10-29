@@ -1,12 +1,18 @@
 // =====================================================================
 //  PLAYER — Minecraft-style first-person / third-person exploration
+//  Third person = an orange tabby cat (it grows wings in fly mode).
 //  WASD move · Mouse look · Space jump · Shift run · G fly · V switch view
 //  F ignite at crosshair · R respawn · Esc release mouse (Esc again = orbit)
 // =====================================================================
 (function () {
-    const VS = CONFIG.VOXEL_SIZE;
-    const R = 0.3, H = 1.75, EYE = 1.62;            // player box (metres)
-    const GRAV = 22, JUMP = 9.6, WALK = 4.5, RUN = 9, FLY = 18;
+    const VS = CONFIG.VOXEL_SIZE, PC = CONFIG.PLAYER;
+    // collision boxes: a person in first person, the cat in third person
+    const BODY = {
+        fp: { R: 0.3, H: 1.75, eye: PC.fpEyeHeight },
+        tp: { R: 0.45, H: 1.2, eye: 1.05 }
+    };
+    const GRAV = 22, WALK = 4.5, RUN = 9, FLY = 18;
+    const JUMP = Math.sqrt(2 * GRAV * PC.jumpHeight);          // apex = jumpHeight (> 1 voxel)
     const $ = id => document.getElementById(id);
     const cam = APP.camera, cv = APP.renderer.domElement;
 
@@ -16,52 +22,138 @@
         analog: { x: 0, y: 0 }          // virtual joystick (touch), -1..1
     };
     const keys = {};
-    let grid, layers, solidCode, terrainCode, saved = null, eyeOffset = 0, walkPhase = 0, facing = 0;
+    let grid, layers, solidCode, stepCode, saved = null, eyeOffset = 0, walkPhase = 0, facing = 0, t = 0;
+    const box = () => BODY[APP.mode === 'tp' ? 'tp' : 'fp'];
 
     document.addEventListener('voxels-ready', () => {
         grid = APP.grid; layers = APP.layers;
         const n = grid.types.length + 1;
-        solidCode = new Uint8Array(n); terrainCode = new Uint8Array(n);
-        ['ground', 'river', 'building', 'building_roof'].forEach(t => { if (grid.code[t]) solidCode[grid.code[t]] = 1; });
-        ['ground', 'river'].forEach(t => { if (grid.code[t]) terrainCode[grid.code[t]] = 1; });
-        APP.scene.add(avatar);
+        solidCode = new Uint8Array(n); stepCode = new Uint8Array(n);
+        // everything is solid now, vegetation included
+        ['ground', 'river', 'building', 'building_roof', 'tree_low', 'tree_high'].forEach(t => { if (grid.code[t]) solidCode[grid.code[t]] = 1; });
+        // single-voxel ledges of these are climbed automatically (no jump needed)
+        ['ground', 'river', 'tree_low'].forEach(t => { if (grid.code[t]) stepCode[grid.code[t]] = 1; });
+        APP.scene.add(cat);
         APP.updaters.push(update);
     });
 
-    // ---------------- avatar (blocky person) ----------------
-    const avatar = new THREE.Group();
-    const mat = c => new THREE.MeshLambertMaterial({ color: c });
-    const box = (w, h, d, m) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.castShadow = true; return b; };
-    const skin = mat(0xe0ac69), shirt = mat(0x2563eb), pants = mat(0x1f2937), hair = mat(0x1c1917);
-    const legL = new THREE.Group(), legR = new THREE.Group(), armL = new THREE.Group(), armR = new THREE.Group();
-    [[legL, -0.13], [legR, 0.13]].forEach(([g, x]) => { const m = box(0.24, 0.85, 0.26, pants); m.position.y = -0.42; g.add(m); g.position.set(x, 0.85, 0); avatar.add(g); });
-    const body = box(0.55, 0.65, 0.3, shirt); body.position.y = 1.18; avatar.add(body);
-    [[armL, -0.38], [armR, 0.38]].forEach(([g, x]) => { const m = box(0.2, 0.62, 0.22, shirt); m.position.y = -0.28; g.add(m); const h = box(0.2, 0.12, 0.22, skin); h.position.y = -0.64; g.add(h); g.position.set(x, 1.48, 0); avatar.add(g); });
-    const head = box(0.38, 0.38, 0.38, skin); head.position.y = 1.72; avatar.add(head);
-    const hairM = box(0.4, 0.12, 0.4, hair); hairM.position.y = 1.92; avatar.add(hairM);
-    avatar.visible = false;
+    // =================================================================
+    //  The cat (local forward = -Z, feet at y = 0)
+    // =================================================================
+    const cat = new THREE.Group();
+    const M = c => new THREE.MeshLambertMaterial({ color: c });
+    const ORANGE = M(0xe8862a), STRIPE = M(0xa94f12), CREAM = M(0xfff1dc), PINK = M(0xf29bb0),
+          EYE = M(0x7cc243), PUPIL = M(0x111111), FEATHER = M(0xfffaf0), FEATHER2 = M(0xf3e6cc);
+    const part = (w, h, d, m, x, y, z, parent) => {
+        const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
+        b.position.set(x, y, z); b.castShadow = true; (parent || cat).add(b); return b;
+    };
+    // body
+    part(0.62, 0.52, 1.15, ORANGE, 0, 0.74, 0);
+    part(0.5, 0.06, 0.8, CREAM, 0, 0.47, -0.05);                          // belly
+    [-0.36, -0.12, 0.12, 0.36].forEach(z => part(0.64, 0.3, 0.09, STRIPE, 0, 0.86, z)); // tabby bands
+    part(0.08, 0.02, 1.0, STRIPE, 0, 1.005, 0.02);                         // spine line
+    // head
+    const head = new THREE.Group(); head.position.set(0, 1.0, -0.66); cat.add(head);
+    part(0.56, 0.46, 0.46, ORANGE, 0, 0, 0, head);
+    part(0.32, 0.16, 0.06, CREAM, 0, -0.1, -0.25, head);                   // muzzle
+    part(0.08, 0.05, 0.03, PINK, 0, -0.03, -0.285, head);                  // nose
+    [-0.13, 0.13].forEach(x => { part(0.11, 0.1, 0.02, EYE, x, 0.06, -0.235, head); part(0.03, 0.09, 0.024, PUPIL, x, 0.06, -0.24, head); });
+    [-0.1, 0, 0.1].forEach(x => part(0.04, 0.12, 0.02, STRIPE, x, 0.17, -0.235, head));   // forehead "M"
+    [-1, 1].forEach(s => {
+        const ear = new THREE.Group(); ear.position.set(0.17 * s, 0.27, 0.02); ear.rotation.z = -0.22 * s; head.add(ear);
+        part(0.17, 0.18, 0.08, ORANGE, 0, 0.06, 0, ear);
+        part(0.09, 0.11, 0.02, PINK, 0, 0.05, -0.045, ear);
+        part(0.06, 0.03, 0.12, CREAM, 0.27 * s, -0.12, -0.2, head);        // whisker pads
+    });
+    // legs (pivot at the hip)
+    const legs = [];
+    [[-0.2, -0.38], [0.2, -0.38], [-0.2, 0.38], [0.2, 0.38]].forEach(([x, z], i) => {
+        const g = new THREE.Group(); g.position.set(x, 0.52, z); cat.add(g);
+        part(0.17, 0.46, 0.17, ORANGE, 0, -0.23, 0, g);
+        part(0.17, 0.06, 0.17, STRIPE, 0, -0.2, 0, g);
+        part(0.18, 0.07, 0.21, CREAM, 0, -0.485, -0.02, g);                 // paw
+        legs.push(g);
+    });
+    // tail: chain of segments
+    const tail = []; let parent = cat;
+    for (let k = 0; k < 5; k++) {
+        const g = new THREE.Group();
+        g.position.set(0, k === 0 ? 0.88 : 0, k === 0 ? 0.56 : 0.24);
+        parent.add(g);
+        part(0.12, 0.12, 0.26, k % 2 ? STRIPE : ORANGE, 0, 0, 0.12, g);
+        if (k === 4) part(0.12, 0.12, 0.08, CREAM, 0, 0, 0.27, g);
+        tail.push(g); parent = g;
+    }
+    // wings (only while flying)
+    const wings = [-1, 1].map(s => {
+        const root = new THREE.Group(); root.position.set(0.3 * s, 0.98, -0.18); cat.add(root);
+        const arm = new THREE.Group(); root.add(arm);
+        // three rows of feathers fanning outwards
+        [[0.95, 0.22, 0], [0.8, 0.2, 0.18], [0.6, 0.18, 0.34]].forEach(([len, w, z], r) => {
+            part(len, 0.05, w, r ? FEATHER2 : FEATHER, (len / 2 + 0.02) * s, 0.02 - r * 0.015, z, arm);
+        });
+        part(0.25, 0.08, 0.2, FEATHER, 0.12 * s, 0.03, -0.04, arm);          // shoulder
+        root.visible = false; root.userData = { s, arm, grow: 0 };
+        return root;
+    });
+    cat.visible = false;
+    APP.cat = cat;
 
-    // ---------------- collision helpers ----------------
+    function animateCat(dt, hs) {
+        t += dt;
+        const moving = Math.min(1, hs / 4);
+        // legs: trot (diagonal pairs), tucked while airborne
+        const ph = Math.sin(walkPhase * 1.3) * 0.75 * moving;
+        if (P.onGround || P.fly) {
+            const tuck = P.fly ? 0.9 : 0;
+            legs[0].rotation.x = ph + tuck; legs[3].rotation.x = ph - tuck;
+            legs[1].rotation.x = -ph + tuck; legs[2].rotation.x = -ph - tuck;
+        } else {
+            legs[0].rotation.x = legs[1].rotation.x = -0.6;       // reach forward when jumping
+            legs[2].rotation.x = legs[3].rotation.x = 0.7;
+        }
+        // tail: curls up, sways
+        tail.forEach((g, k) => {
+            g.rotation.x = k === 0 ? -0.9 + 0.15 * moving : -0.15 - 0.04 * k;
+            g.rotation.y = Math.sin(t * 2.2 - k * 0.6) * (0.12 + 0.05 * k) * (P.fly ? 0.4 : 1);
+        });
+        head.rotation.x = Math.max(-0.4, Math.min(0.35, -P.pitch * 0.35));
+        // wings
+        wings.forEach(w => {
+            const u = w.userData;
+            u.grow += ((P.fly ? 1 : 0) - u.grow) * Math.min(1, dt * 6);
+            w.visible = u.grow > 0.02;
+            w.scale.setScalar(u.grow);
+            const flap = Math.sin(t * (hs > 2 || Math.abs(P.vel.y) > 1 ? 11 : 6)) * 0.55;
+            u.arm.rotation.z = u.s * (0.15 + flap);
+            u.arm.rotation.y = u.s * 0.15;
+        });
+        // bank slightly while flying
+        cat.rotation.z = P.fly ? Math.max(-0.25, Math.min(0.25, (P.analog.x || 0) * -0.25)) : 0;
+    }
+
+    // =================================================================
+    //  Collision
+    // =================================================================
     function solidAt(lx, ly, lz) {
         if (ly < 0) return true;                                        // floor below the dataset
         if (lx < 0 || lz < 0 || lx >= grid.nx || lz >= grid.nz) return !P.fly; // invisible wall
         if (ly >= grid.ny) return false;
         const i = grid.idx(lx, ly, lz), c = grid.data[i];
-        return c && solidCode[c] && !layers.removed[i];
+        return c && solidCode[c] && !layers.isRemoved(i) && layers.visibleType(c);  // hidden layers can be walked through
     }
-    /** returns highest blocking cell Y and whether all blockers are terrain, or null */
-    function collide(px, py, pz) {
-        const x0 = grid.cellX(px - R), x1 = grid.cellX(px + R - 1e-4);
-        const y0 = grid.cellY(py), y1 = grid.cellY(py + H - 1e-4);
-        const z0 = grid.cellZ(pz - R), z1 = grid.cellZ(pz + R - 1e-4);
+    /** returns { top, stepOnly } of the blocking cells, or null */
+    function collide(px, py, pz, b = box()) {
+        const x0 = grid.cellX(px - b.R), x1 = grid.cellX(px + b.R - 1e-4);
+        const y0 = grid.cellY(py), y1 = grid.cellY(py + b.H - 1e-4);
+        const z0 = grid.cellZ(pz - b.R), z1 = grid.cellZ(pz + b.R - 1e-4);
         let hit = null;
         for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) {
-            if (solidAt(x, y, z)) {
-                const inside = grid.inside(x, Math.max(0, y), z);
-                const terr = inside && y >= 0 && terrainCode[grid.data[grid.idx(x, y, z)]];
-                if (!hit) hit = { top: y, terrainOnly: !!terr };
-                else { hit.top = Math.max(hit.top, y); hit.terrainOnly = hit.terrainOnly && !!terr; }
-            }
+            if (!solidAt(x, y, z)) continue;
+            const step = y >= 0 && grid.inside(x, y, z) && stepCode[grid.data[grid.idx(x, y, z)]];
+            if (!hit) hit = { top: y, stepOnly: !!step };
+            else { hit.top = Math.max(hit.top, y); hit.stepOnly = hit.stepOnly && !!step; }
         }
         return hit;
     }
@@ -78,9 +170,9 @@
             P.vel.y = 0;
             return;
         }
-        // auto step-up one voxel of terrain (Minecraft auto-jump feel)
+        // auto step-up one voxel of terrain / low vegetation
         const lift = cellTop(hit.top) - p.y;
-        if (!P.fly && P.onGround && hit.terrainOnly && lift > 0 && lift <= VS + 0.05 && !collide(p.x, p.y + lift, p.z)) {
+        if (!P.fly && P.onGround && hit.stepOnly && lift > 0 && lift <= VS + 0.05 && !collide(p.x, p.y + lift, p.z)) {
             p.y += lift; eyeOffset -= lift;
             return;
         }
@@ -88,40 +180,70 @@
         P.vel[axis] = 0;
     }
 
-    // ---------------- spawn ----------------
-    function spawn() {
-        const t = APP.controls.target;
-        const cx = grid.cellX(t.x), cz = grid.cellZ(t.z);
-        for (let r = 0; r < 120; r++) {
-            for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) {
+    // =================================================================
+    //  Spawn — fixed location (CONFIG.PLAYER.spawn)
+    // =================================================================
+    function standable(lx, lz, b) {
+        // lowest free gap above a solid cell, scanning upwards from the bottom of the column
+        for (let ly = 0; ly < grid.ny; ly++) {
+            if (!solidAt(lx, ly, lz) || solidAt(lx, ly + 1, lz)) continue;
+            const y = cellTop(ly);
+            if (!collide(grid.worldX(lx), y, grid.worldZ(lz), b)) return y;
+        }
+        return null;
+    }
+    function spawn(b = box()) {
+        const [wx, wz] = APP.llToWorld(PC.spawn.lat, PC.spawn.lon);
+        const cx = grid.cellX(wx), cz = grid.cellZ(wz);
+        let found = null;
+        for (let r = 0; r < 60 && !found; r++) {
+            for (let dx = -r; dx <= r && !found; dx++) for (let dz = -r; dz <= r && !found; dz++) {
                 if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
-                const lx = cx + dx, lz = cz + dz;
-                const ty = grid.topWhere(lx, lz, (c, i) => solidCode[c] && !layers.removed[i]);
-                if (ty < 0 || !terrainCode[grid.get(lx, ty, lz)]) continue;
-                P.pos.set(grid.worldX(lx), cellTop(ty), grid.worldZ(lz));
-                if (collide(P.pos.x, P.pos.y, P.pos.z)) continue;
-                P.vel.set(0, 0, 0); P.spawned = true;
-                // face the direction the orbit camera was looking
-                const d = new THREE.Vector3(); cam.getWorldDirection(d);
-                P.yaw = Math.atan2(-d.x, -d.z); P.pitch = 0; facing = P.yaw;
-                return true;
+                const y = standable(cx + dx, cz + dz, b);
+                if (y !== null) found = [cx + dx, y, cz + dz];
             }
         }
-        return false;
+        if (!found) return false;
+        if (found[0] !== cx || found[2] !== cz) console.info('Spawn moved to nearest open cell', found);
+        P.pos.set(grid.worldX(found[0]), found[1], grid.worldZ(found[2]));
+        P.vel.set(0, 0, 0); P.spawned = true;
+        const hd = PC.spawn.headingDeg;
+        if (hd == null) P.yaw = Math.atan2(-(APP.bounds.cx - P.pos.x), -(APP.bounds.cz - P.pos.z)); // face the campus
+        else P.yaw = -hd * Math.PI / 180;     // compass heading → yaw (0 = north)
+        P.pitch = 0;
+        // turn toward open space so the third-person camera is not pressed against a wall
+        const clear = yaw => {
+            const o = new THREE.Vector3(P.pos.x, P.pos.y + 1.75, P.pos.z), d = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
+            const h = grid.raycast(o, d, 8, (i, c) => !layers.isRemoved(i) && layers.visibleType(c));
+            return h ? h.dist : 8;
+        };
+        let best = P.yaw, bestD = clear(P.yaw);
+        for (let k = 1; k < 8 && bestD < 6; k++) {
+            const y = P.yaw + k * Math.PI / 4, d = clear(y);
+            if (d > bestD + 0.5) { best = y; bestD = d; }
+        }
+        P.yaw = best; facing = P.yaw;
+        return true;
     }
+    APP.spawnPlayer = spawn;
 
-    // ---------------- mode switching ----------------
+    // =================================================================
+    //  Mode switching
+    // =================================================================
     function enter(mode) {
         if (!grid) return;
         if (APP.mode === 'orbit') {
             saved = { pos: cam.position.clone(), target: APP.controls.target.clone() };
-            if (!spawn()) { APP.flash && APP.flash('No open ground found near the view centre'); return; }
+            if (!spawn(BODY[mode])) { APP.flash && APP.flash('Spawn point not found — check CONFIG.PLAYER.spawn'); return; }
+        } else if (mode === 'fp' && APP.mode === 'tp' && collide(P.pos.x, P.pos.y, P.pos.z, BODY.fp)) {
+            APP.flash && APP.flash('Not enough headroom here for first person');
+            return;
         }
         APP.mode = mode;
         if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); // Space must not re-click buttons
         APP.controls.enabled = false;
         cam.rotation.order = 'YXZ';
-        avatar.visible = mode === 'tp';
+        cat.visible = mode === 'tp';
         document.body.classList.add('walking');
         document.body.classList.remove('igniting');
         if (APP.isTouch) document.getElementById('sidebar-container').classList.add('collapsed');
@@ -131,7 +253,7 @@
     function exit() {
         if (APP.mode === 'orbit') return;
         APP.mode = 'orbit';
-        avatar.visible = false;
+        cat.visible = false;
         cam.rotation.order = 'XYZ';
         if (document.pointerLockElement) document.exitPointerLock();
         if (saved) { cam.position.copy(saved.pos); APP.controls.target.copy(saved.target); }
@@ -153,7 +275,9 @@
     $('view-fp').onclick = () => enter('fp');
     $('view-tp').onclick = () => enter('tp');
 
-    // ---------------- input ----------------
+    // =================================================================
+    //  Input
+    // =================================================================
     const lock = () => { if (APP.isTouch) return; if (cv.requestPointerLock) try { const r = cv.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (e) { } };
     cv.addEventListener('click', () => { if (APP.mode !== 'orbit' && !document.pointerLockElement) lock(); });
     document.addEventListener('pointerlockchange', () => {
@@ -178,18 +302,21 @@
     });
     function look(dx, dy) {
         P.yaw -= dx * 0.0022;
-        P.pitch = Math.max(-1.5, Math.min(1.5, P.pitch - dy * 0.0022));
+        P.pitch = Math.max(-1.45, Math.min(1.45, P.pitch - dy * 0.0022));
     }
-    cv.addEventListener('wheel', e => { if (APP.mode === 'tp') { P.tpDist = Math.max(2, Math.min(30, P.tpDist + e.deltaY * 0.01)); e.preventDefault(); } }, { passive: false });
+    cv.addEventListener('wheel', e => { if (APP.mode === 'tp') { P.tpDist = Math.max(2.5, Math.min(30, P.tpDist + e.deltaY * 0.01)); e.preventDefault(); } }, { passive: false });
 
     addEventListener('keydown', e => {
         if (APP.mode === 'orbit' || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
         keys[e.code] = true;
         if (e.code === 'Escape' && !document.pointerLockElement) exit();
-        if (e.code === 'KeyV') { enter(APP.mode === 'fp' ? 'tp' : 'fp'); }
-        if (e.code === 'KeyG') { P.fly = !P.fly; P.vel.y = 0; syncButtons(); APP.flash && APP.flash(P.fly ? 'Fly mode ON (Space up · C down)' : 'Fly mode OFF'); }
-        if (e.code === 'KeyR') spawn();
-        if (e.code === 'KeyF') igniteAtCrosshair();
+        if (e.code === 'KeyV' && !e.repeat) { enter(APP.mode === 'fp' ? 'tp' : 'fp'); }
+        if (e.code === 'KeyG' && !e.repeat) {
+            P.fly = !P.fly; P.vel.y = P.fly ? 4 : 0; syncButtons();
+            APP.flash && APP.flash(P.fly ? (APP.mode === 'tp' ? '🪽 Wings out! Space up · C down' : 'Fly mode ON (Space up · C down)') : 'Fly mode OFF');
+        }
+        if (e.code === 'KeyR' && !e.repeat) spawn();
+        if (e.code === 'KeyF' && !e.repeat) igniteAtCrosshair();
         if (e.code === 'Space') e.preventDefault();
     });
     addEventListener('keyup', e => { keys[e.code] = false; });
@@ -203,10 +330,13 @@
         else APP.flash('Aim at vegetation or a building (closer than 300 m)');
     }
 
-    // ---------------- per-frame ----------------
+    // =================================================================
+    //  Per frame
+    // =================================================================
     const target = new THREE.Vector3(), back = new THREE.Vector3();
     function update(dt) {
         if (APP.mode === 'orbit') return;
+        const b = box();
         const fwdX = -Math.sin(P.yaw), fwdZ = -Math.cos(P.yaw);
         const rgtX = Math.cos(P.yaw), rgtZ = -Math.sin(P.yaw);
         let ix = 0, iz = 0;
@@ -225,17 +355,16 @@
         P.vel.z += (iz * sp - P.vel.z) * k;
         if (P.fly) {
             const vy = (keys.Space ? 1 : 0) - (keys.KeyC || keys.ControlLeft ? 1 : 0);
-            P.vel.y += (vy * sp - P.vel.y) * k;
+            P.vel.y += (vy * sp * 0.6 - P.vel.y) * k;
         } else {
             if (keys.Space && P.onGround) { P.vel.y = JUMP; P.onGround = false; }
             P.vel.y -= GRAV * dt;
-            // floating if under flood water
-            if (P.pos.y + 1.0 < APP.waterLevel) P.vel.y = Math.max(P.vel.y, keys.Space ? 3 : -1.5);
+            if (P.pos.y + 0.8 < APP.waterLevel) P.vel.y = Math.max(P.vel.y, keys.Space ? 3 : -1.5);   // float in floods
         }
 
         // integrate with sub-steps (no tunnelling)
         const maxD = Math.max(Math.abs(P.vel.x), Math.abs(P.vel.y), Math.abs(P.vel.z)) * dt;
-        const n = Math.max(1, Math.ceil(maxD / 0.4));
+        const n = Math.max(1, Math.ceil(maxD / 0.3));
         const wasGround = P.onGround;
         P.onGround = false;
         for (let s = 0; s < n; s++) {
@@ -243,10 +372,7 @@
             moveAxis('z', P.vel.z * dt / n);
             moveAxis('y', P.vel.y * dt / n);
         }
-        if (!P.onGround && wasGround && P.vel.y <= 0 && !P.fly) {
-            // keep ground contact when walking down a 1-voxel step
-            if (collide(P.pos.x, P.pos.y - 0.05, P.pos.z)) P.onGround = true;
-        }
+        if (!P.onGround && wasGround && P.vel.y <= 0 && !P.fly && collide(P.pos.x, P.pos.y - 0.05, P.pos.z)) P.onGround = true;
         if (P.pos.y < APP.bounds.minY - 60) spawn();
 
         eyeOffset += (0 - eyeOffset) * Math.min(1, dt * 10);
@@ -254,27 +380,26 @@
         walkPhase += hs * dt * 2.2;
 
         if (APP.mode === 'fp') {
-            cam.position.set(P.pos.x, P.pos.y + EYE + eyeOffset, P.pos.z);
+            cam.position.set(P.pos.x, P.pos.y + b.eye + eyeOffset, P.pos.z);
             cam.rotation.set(P.pitch, P.yaw, 0, 'YXZ');
         } else {
-            // avatar
             if (hs > 0.3) {
                 const want = Math.atan2(-P.vel.x, -P.vel.z);
                 let d = want - facing; d = Math.atan2(Math.sin(d), Math.cos(d));
                 facing += d * Math.min(1, dt * 10);
             }
-            avatar.position.set(P.pos.x, P.pos.y + eyeOffset, P.pos.z);
-            avatar.rotation.y = facing;
-            const sw = P.onGround ? Math.sin(walkPhase) * Math.min(1, hs / 4) * 0.8 : 0.3;
-            legL.rotation.x = sw; legR.rotation.x = -sw; armL.rotation.x = -sw; armR.rotation.x = sw;
-            // camera boom with collision
-            target.set(P.pos.x, P.pos.y + 1.6 + eyeOffset, P.pos.z);
+            cat.position.set(P.pos.x, P.pos.y + eyeOffset, P.pos.z);
+            cat.rotation.y = facing;
+            animateCat(dt, hs);
+            // camera boom; stops at anything visible so it never ends up inside a block
+            target.set(P.pos.x, P.pos.y + 1.75 + eyeOffset, P.pos.z);
             back.set(Math.sin(P.yaw) * Math.cos(P.pitch), -Math.sin(P.pitch), Math.cos(P.yaw) * Math.cos(P.pitch));
-            const hit = grid.raycast(target, back, P.tpDist, (i, c) => !layers.removed[i] && layers.visibleType(c)); // trees too, so the view never sits inside a canopy
-            const d = hit ? Math.max(0.6, hit.dist - 0.3) : P.tpDist;
+            const hit = grid.raycast(target, back, P.tpDist, (i, c) => !layers.isRemoved(i) && layers.visibleType(c));
+            const d = hit ? Math.max(0.8, hit.dist - 0.4) : P.tpDist;
             cam.position.copy(target).addScaledVector(back, d);
-            target.y += 0.6;          // look slightly over the head so the crosshair is free
-            cam.lookAt(target);
+            cat.visible = d > 1.6;                                    // camera squeezed against a wall: hide the cat
+            // look along the yaw/pitch (stable) instead of lookAt (which flips near vertical)
+            cam.rotation.set(P.pitch - 0.16, P.yaw, 0, 'YXZ');
         }
         $('underwater').style.opacity = cam.position.y < APP.waterLevel ? 1 : 0;
         $('hud-pos').textContent = `${(P.pos.y).toFixed(0)} m elev.`;

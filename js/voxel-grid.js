@@ -11,31 +11,46 @@ class VoxelGrid {
     }
 
     // ---------- loading ----------
-    static async load() {
+    static async load(onStatus = () => {}) {
         const supportsGzip = typeof DecompressionStream !== 'undefined';
+        let err = null;
         if (supportsGzip) {
             try {
+                onStatus(`Downloading ${CONFIG.DATA_URL}…`);
                 const res = await fetch(CONFIG.DATA_URL);
-                if (!res.ok) throw new Error('HTTP ' + res.status);
+                if (!res.ok) throw new Error(`${CONFIG.DATA_URL}: HTTP ${res.status}`);
                 const stream = res.body.pipeThrough(new DecompressionStream('gzip'));
+                onStatus('Decompressing…');
                 const buf = await new Response(stream).arrayBuffer();
+                onStatus('Building voxels…');
                 return VoxelGrid.fromBinary(buf);
             } catch (e) {
-                console.warn('Binary voxel load failed, falling back to JSON:', e);
+                err = e;
+                console.warn('Binary voxel load failed:', e);
             }
         }
+        if (!CONFIG.JSON_FALLBACK_URL) throw err || new Error('This browser cannot decompress gzip');
+        onStatus('Loading JSON fallback…');
         const blocks = await (await fetch(CONFIG.JSON_FALLBACK_URL)).json();
         return VoxelGrid.fromBlocks(blocks);
     }
 
+    /** VXL1 (v2 tool) and VXL2 (32-bit header + voxel size) */
     static fromBinary(buf) {
         const dv = new DataView(buf);
         const magic = String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3));
-        if (magic !== 'VXL1') throw new Error('Not a VXL1 file');
-        const nx = dv.getUint16(4, true), ny = dv.getUint16(6, true), nz = dv.getUint16(8, true);
-        const x0 = dv.getInt16(10, true), y0 = dv.getInt16(12, true), z0 = dv.getInt16(14, true);
-        const nTypes = dv.getUint8(16);
-        let p = 17; const types = [];
+        let nx, ny, nz, x0, y0, z0, size = null, p;
+        if (magic === 'VXL1') {
+            nx = dv.getUint16(4, true); ny = dv.getUint16(6, true); nz = dv.getUint16(8, true);
+            x0 = dv.getInt16(10, true); y0 = dv.getInt16(12, true); z0 = dv.getInt16(14, true); p = 16;
+        } else if (magic === 'VXL2') {
+            nx = dv.getUint32(4, true); ny = dv.getUint32(8, true); nz = dv.getUint32(12, true);
+            x0 = dv.getInt32(16, true); y0 = dv.getInt32(20, true); z0 = dv.getInt32(24, true);
+            size = dv.getFloat32(28, true); p = 32;
+        } else throw new Error('Not a VXL file');
+        if (size && Math.abs(size - CONFIG.VOXEL_SIZE) > 1e-6)
+            console.warn(`File says ${size} m voxels but the page is set to ${CONFIG.VOXEL_SIZE} m — check CONFIG.DATASETS`);
+        const nTypes = dv.getUint8(p++); const types = [];
         for (let t = 0; t < nTypes; t++) {
             const len = dv.getUint8(p++); let s = '';
             for (let k = 0; k < len; k++) s += String.fromCharCode(dv.getUint8(p++));

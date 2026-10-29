@@ -1,4 +1,4 @@
-# Voxel Visualization – Faculty of Engineering, UGM (v2)
+# Voxel Visualization – Faculty of Engineering, UGM (v4)
 
 Lightweight three.js voxel city for urban simulation: shadows, flood, **live wind**, **fire spread**, and **Minecraft-style first/third-person** exploration on a web basemap.
 
@@ -9,22 +9,36 @@ style.css
 js/config.js                all tunables (voxel size, georef, fire & wind parameters, basemaps)
 js/voxel-grid.js            binary loader + dense grid + DDA ray casting
 js/main.js                  scene, voxel layers (hidden-interior culling), sun, flood, loop
-js/wind.js                  Open-Meteo live wind / manual wind + streamlines
+js/geo.js                   scene <-> lat/lon
+js/sky.js                   real-time sun position (WIB), night sky, stars
+js/weather.js               Open-Meteo weather + air quality (15-min refresh)
+js/rain.js                  clouds, rain, lightning from live/manual weather
+js/wind.js                  live (from weather.js) / manual wind + streamlines
 js/fire.js                  cellular-automaton fire spread, ignition picking, smoke
-js/player.js                first/third person, collision, fly mode, avatar
-js/basemap.js               XYZ tiles draped under the model, georef alignment
-environment_blocks.vxl.gz   voxel data, 50 KB (generated)
-environment_blocks.json     original data, used only as a fallback
-tools/compress_voxels.py    JSON -> .vxl.gz converter
+js/player.js                first person / third person (tabby cat with wings), collision, fixed spawn
+js/touch.js                 on-screen joystick & buttons for phones
+js/minimap.js               heading-up minimap in first / third person
+js/basemap.js               XYZ tiles draped on a terrain-following surface
+favicon.svg / .ico          tab icon (+ apple-touch-icon.png)
+environment_blocks.vxl.gz   2 m voxel data, 50 KB (generated)
+environment_blocks_1m.vxl.gz, environment_blocks_05m.vxl.gz   1 m / 0.5 m data (you generate these)
+environment_blocks.json     original 2 m data, used only as a fallback
+tools/compress_voxels.py    JSON -> .vxl.gz converter (streams huge files)
 ```
 
-## Data format
-Regenerate the binary after changing the voxels:
+## Data format & grid sizes
+Convert each JSON once (needs Python 3; `pip install numpy` makes it faster):
 ```
-python tools/compress_voxels.py environment_blocks.json environment_blocks.vxl.gz
+python tools/compress_voxels.py environment_blocks.json     environment_blocks.vxl.gz     --size 2
+python tools/compress_voxels.py environment_blocks_1m.json  environment_blocks_1m.vxl.gz  --size 1
+python tools/compress_voxels.py environment_blocks_05m.json environment_blocks_05m.vxl.gz --size 0.5
 ```
-A dense `uint8` grid (0 = empty, k = class k-1) stored column by column, then gzipped.
-13.8 MB JSON → 50 KB. The browser decompresses it with the native `DecompressionStream`.
+Upload the `.vxl.gz` files next to `index.html` (the big JSON files are not needed on the website).
+The **Grid size** buttons reload the page with `?res=2m`, `?res=1m` or `?res=05m`; file names are set in
+`CONFIG.DATASETS` (js/config.js). Format: dense `uint8` grid (0 = empty, k = class k-1) stored column by
+column, gzipped; the header records the voxel size ("VXL2"). The browser decompresses it natively.
+
+Memory guide: 2 m ≈ 40 MB, 1 m ≈ 150 MB, 0.5 m ≈ 700 MB+ of browser memory — 0.5 m is for desktops.
 
 ## Wind
 Default source is [Open-Meteo](https://open-meteo.com/) `current` weather (free, no key, CORS, 15-min updates):
@@ -39,8 +53,8 @@ Voxels under the flood level cannot burn. Parameters are in `CONFIG.FIRE`. This 
 illustrative model, not calibrated against observed fires.
 
 ## Georeferencing
-Set `CONFIG.GEOREF` to the true lat/lon of the grid centre (and rotation / flip if needed),
-or align visually in the **Basemap** panel and press **Copy georef**.
+`CONFIG.GEOREF` holds the lat/lon of the grid centre (plus rotation / flip if ever needed).
+The walk-mode spawn point is `CONFIG.PLAYER.spawn`.
 
 ## Run locally
 Any static server, e.g. `python -m http.server`, then open http://localhost:8000.
